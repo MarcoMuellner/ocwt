@@ -142,7 +142,7 @@ def _generate_branch_name(
 
     prompt = _build_branch_prompt(build_desc)
     proc = subprocess.run(
-        ["opencode", "run", "--agent", agent, *file_args, prompt],
+        ["opencode", "run", "--agent", agent, *file_args, "--", prompt],
         capture_output=True,
         text=True,
         check=False,
@@ -235,7 +235,17 @@ def _plan_and_launch(
 
     session_id: str | None = None
     proc = subprocess.Popen(
-        ["opencode", "run", "--agent", agent, "--format", "json", *file_args, build_desc],
+        [
+            "opencode",
+            "run",
+            "--agent",
+            agent,
+            "--format",
+            "json",
+            *file_args,
+            "--",
+            build_desc,
+        ],
         cwd=worktree_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
