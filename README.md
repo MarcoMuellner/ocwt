@@ -30,9 +30,18 @@ Run the CLI:
 uv run ocwt --help
 ```
 
+Config:
+
+```bash
+uv run ocwt config show
+uv run ocwt config get editor
+uv run ocwt config set editor zed
+uv run ocwt config reset
+```
+
 Completion:
 
 ```bash
-uv run ocwt --show-completion bash
-uv run ocwt --show-completion zsh
+uv run ocwt completion bash
+uv run ocwt completion zsh
 ```

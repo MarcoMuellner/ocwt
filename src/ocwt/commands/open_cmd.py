@@ -8,6 +8,7 @@ from pathlib import Path
 import typer
 
 from ocwt.branching import fallback_branch, is_valid_prefixed_branch, sanitize_branch, trim
+from ocwt.config_store import OcwtConfig, load_config
 from ocwt.git_ops import (
     find_worktree_for_branch,
     get_current_git_root,
@@ -87,14 +88,19 @@ def _build_branch_prompt(build_desc: str) -> str:
     )
 
 
-def _generate_branch_name(build_desc: str, attached_files: list[Path], fallback_seed: str) -> str:
+def _generate_branch_name(
+    build_desc: str,
+    attached_files: list[Path],
+    fallback_seed: str,
+    agent: str,
+) -> str:
     file_args: list[str] = []
     for file_path in attached_files:
         file_args.extend(["--file", str(file_path)])
 
     prompt = _build_branch_prompt(build_desc)
     proc = subprocess.run(
-        ["opencode", "run", *file_args, prompt],
+        ["opencode", "run", "--agent", agent, *file_args, prompt],
         capture_output=True,
         text=True,
         check=False,
@@ -115,13 +121,26 @@ def _launch_opencode(worktree_dir: Path) -> int:
     return int(proc.returncode)
 
 
-def _ensure_repo_symlinks(repo_root: Path, worktree_dir: Path) -> bool:
+def _load_runtime_config() -> OcwtConfig | None:
     try:
-        messages = [
-            *ensure_opencode_symlink(repo_root, worktree_dir),
-            *ensure_idea_symlink(repo_root, worktree_dir),
-            *ensure_env_symlinks(repo_root, worktree_dir),
-        ]
+        return load_config()
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        return None
+
+
+def _ensure_repo_symlinks(repo_root: Path, worktree_dir: Path) -> bool:
+    config = _load_runtime_config()
+    if config is None:
+        return False
+    try:
+        messages: list[str] = []
+        if config.symlink_opencode:
+            messages.extend(ensure_opencode_symlink(repo_root, worktree_dir))
+        if config.symlink_idea:
+            messages.extend(ensure_idea_symlink(repo_root, worktree_dir))
+        if config.symlink_env:
+            messages.extend(ensure_env_symlinks(repo_root, worktree_dir))
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         return False
@@ -149,6 +168,9 @@ def run_open(options: OpenOptions) -> int:
         return 1
 
     repo_root = primary_repo_root(current_git_root)
+    config = _load_runtime_config()
+    if config is None:
+        return 1
     mentions = _extract_mentions(build_input, options.at_files)
 
     existing_direct = None if mentions else find_worktree_for_branch(repo_root, build_input)
@@ -189,7 +211,7 @@ def run_open(options: OpenOptions) -> int:
 
     if not branch:
         try:
-            branch = _generate_branch_name(build_desc, attached_files, fallback_seed)
+            branch = _generate_branch_name(build_desc, attached_files, fallback_seed, config.agent)
         except RuntimeError as exc:
             typer.echo(str(exc), err=True)
             return 1
@@ -204,7 +226,7 @@ def run_open(options: OpenOptions) -> int:
             return 1
         return _launch_opencode(existing_worktree)
 
-    worktree_dir = worktree_dir_for_branch(repo_root, branch)
+    worktree_dir = worktree_dir_for_branch(repo_root, branch, config.worktree_parent)
     worktree_dir.parent.mkdir(parents=True, exist_ok=True)
 
     if worktree_dir.exists():
