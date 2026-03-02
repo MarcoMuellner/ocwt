@@ -115,7 +115,7 @@ def test_open_plan_auto_injects_direct_file(
 
     assert result == 0
     assert captured["plan_mode"] is True
-    assert captured["agent"] == "build"
+    assert captured["agent"] == "plan"
     attached = captured["attached_files"]
     assert isinstance(attached, list)
     assert attached == [target_file.resolve()]
@@ -225,3 +225,69 @@ def test_open_uses_fallback_branch_when_generation_fails(
     worktree_dir = captured.get("worktree_dir")
     assert isinstance(worktree_dir, Path)
     assert worktree_dir.name.endswith("epic-011-ticket-003-delivery-status")
+
+
+def test_open_plan_allows_explicit_agent_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    target_file = repo_root / "epic_011" / "ticket_003.md"
+    target_file.parent.mkdir(parents=True)
+    target_file.write_text("details", encoding="utf-8")
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr("ocwt.commands.open_cmd.shutil.which", lambda _name: "/usr/bin/opencode")
+    monkeypatch.setattr("ocwt.commands.open_cmd.get_current_git_root", lambda: repo_root)
+    monkeypatch.setattr("ocwt.commands.open_cmd.primary_repo_root", lambda _root: repo_root)
+    monkeypatch.setattr("ocwt.commands.open_cmd.find_worktree_for_branch", lambda *_args: None)
+    monkeypatch.setattr("ocwt.commands.open_cmd.pick_main_branch", lambda _repo_root: "main")
+    monkeypatch.setattr("ocwt.commands.open_cmd.local_branch_exists", lambda *_args: False)
+    monkeypatch.setattr("ocwt.commands.open_cmd.run_git", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("ocwt.commands.open_cmd._ensure_repo_symlinks", lambda *_args: True)
+    monkeypatch.setattr("ocwt.commands.open_cmd._launch_editor_if_enabled", lambda *_args: None)
+    monkeypatch.setattr(
+        "ocwt.commands.open_cmd._load_runtime_config",
+        lambda: OcwtConfig(
+            editor="none",
+            open_editor=False,
+            agent="build",
+            auto_plan=False,
+            auto_pull=False,
+            prompt_file=None,
+            branch_prompt_file=None,
+            worktree_parent=".worktrees",
+            symlink_opencode=True,
+            symlink_idea=True,
+            symlink_env=True,
+        ),
+    )
+    monkeypatch.setattr("ocwt.commands.open_cmd._generate_branch_name", lambda *_args: "feat/x")
+
+    def fake_open_session(
+        worktree_dir: Path,
+        build_desc: str,
+        attached_files: list[Path],
+        plan_mode: bool,
+        agent: str,
+    ) -> int:
+        _ = (worktree_dir, build_desc, attached_files, plan_mode)
+        captured["agent"] = agent
+        return 0
+
+    monkeypatch.setattr("ocwt.commands.open_cmd._open_session", fake_open_session)
+
+    result = run_open(
+        OpenOptions(
+            intent_or_branch=str(target_file),
+            at_files=(),
+            plan=True,
+            agent="design",
+            editor=None,
+        )
+    )
+
+    assert result == 0
+    assert captured["agent"] == "design"

@@ -480,6 +480,7 @@ def run_open(options: OpenOptions) -> int:
     if config is None:
         return 1
     effective_agent = options.agent or config.agent
+    planning_agent = options.agent or "plan"
     plan_mode = options.plan or config.auto_plan
     effective_editor, should_open_editor = _resolve_editor_behavior(options, config)
     mentions = _extract_mentions(build_input, options.at_files)
@@ -499,7 +500,7 @@ def run_open(options: OpenOptions) -> int:
             build_desc=build_input,
             attached_files=[],
             plan_mode=plan_mode,
-            agent=effective_agent,
+            agent=planning_agent,
         )
 
     attached_files: list[Path] = []
@@ -559,7 +560,7 @@ def run_open(options: OpenOptions) -> int:
             build_desc=build_desc,
             attached_files=attached_files,
             plan_mode=plan_mode,
-            agent=effective_agent,
+            agent=planning_agent,
         )
 
     worktree_dir = worktree_dir_for_branch(repo_root, branch, config.worktree_parent)
@@ -599,5 +600,5 @@ def run_open(options: OpenOptions) -> int:
         build_desc=build_desc,
         attached_files=attached_files,
         plan_mode=plan_mode,
-        agent=effective_agent,
+        agent=planning_agent,
     )
