@@ -597,18 +597,29 @@ def _launch_editor_if_enabled(worktree_dir: Path, editor: str | None, should_ope
         typer.echo(f"Warning: failed to launch editor '{editor}': {exc}", err=True)
 
 
-def _pull_repo_if_enabled(repo_root: Path, auto_pull: bool) -> bool:
+def _pull_repo_if_enabled(repo_root: Path, auto_pull: bool, base: str) -> bool:
     """Run a fast-forward pull gate before creating new worktrees.
 
     Args:
         repo_root: Repository root where pull should execute.
         auto_pull: Whether pull gate is enabled.
+        base: Base branch that should be current before pulling.
 
     Returns:
         ``True`` when pull gate passes or is disabled.
     """
     if not auto_pull:
         return True
+
+    current_branch = run_git(repo_root, ["rev-parse", "--abbrev-ref", "HEAD"], check=False)
+    branch_name = current_branch.stdout.strip() if current_branch.stdout else ""
+    if branch_name != base:
+        typer.echo(
+            f"Auto-pull requires '{base}' checked out in the main repo. "
+            f"Current branch is '{branch_name or 'unknown'}'.",
+            err=True,
+        )
+        return False
 
     typer.echo("Auto-pull enabled: pulling latest changes before creating worktree...")
     try:
@@ -741,7 +752,7 @@ def run_open(options: OpenOptions) -> int:
         typer.echo("Delete it or choose a different branch name.", err=True)
         return 1
 
-    if not _pull_repo_if_enabled(repo_root, config.auto_pull):
+    if not _pull_repo_if_enabled(repo_root, config.auto_pull, base):
         return 1
 
     typer.echo(f"Repo root : {repo_root}")

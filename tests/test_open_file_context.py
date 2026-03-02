@@ -128,26 +128,53 @@ def test_pull_repo_if_enabled_runs_pull(monkeypatch: pytest.MonkeyPatch, tmp_pat
     def fake_run_git(_repo_root: Path, args: list[str], check: bool = True) -> object:
         _ = check
         calls.append(args)
-        return object()
+        if args == ["rev-parse", "--abbrev-ref", "HEAD"]:
+            return subprocess.CompletedProcess(
+                args=["git"], returncode=0, stdout="main\n", stderr=""
+            )
+        return subprocess.CompletedProcess(args=["git"], returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr("ocwt.commands.open_cmd.run_git", fake_run_git)
 
-    ok = _pull_repo_if_enabled(tmp_path, auto_pull=True)
+    ok = _pull_repo_if_enabled(tmp_path, auto_pull=True, base="main")
 
     assert ok is True
-    assert calls == [["pull", "--ff-only"]]
+    assert calls == [["rev-parse", "--abbrev-ref", "HEAD"], ["pull", "--ff-only"]]
 
 
 def test_pull_repo_if_enabled_fails_on_git_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    def fake_run_git(_repo_root: Path, _args: list[str], check: bool = True) -> object:
+    def fake_run_git(_repo_root: Path, args: list[str], check: bool = True) -> object:
         _ = check
+        if args == ["rev-parse", "--abbrev-ref", "HEAD"]:
+            return subprocess.CompletedProcess(
+                args=["git"], returncode=0, stdout="main\n", stderr=""
+            )
         raise subprocess.CalledProcessError(returncode=1, cmd=["git"], stderr="pull failed")
 
     monkeypatch.setattr("ocwt.commands.open_cmd.run_git", fake_run_git)
 
-    ok = _pull_repo_if_enabled(tmp_path, auto_pull=True)
+    ok = _pull_repo_if_enabled(tmp_path, auto_pull=True, base="main")
+
+    assert ok is False
+
+
+def test_pull_repo_if_enabled_requires_base_checked_out(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def fake_run_git(_repo_root: Path, args: list[str], check: bool = True) -> object:
+        _ = check
+        if args == ["rev-parse", "--abbrev-ref", "HEAD"]:
+            return subprocess.CompletedProcess(
+                args=["git"], returncode=0, stdout="feat/x\n", stderr=""
+            )
+        raise AssertionError(f"Unexpected git command: {args!r}")
+
+    monkeypatch.setattr("ocwt.commands.open_cmd.run_git", fake_run_git)
+
+    ok = _pull_repo_if_enabled(tmp_path, auto_pull=True, base="main")
 
     assert ok is False
 
