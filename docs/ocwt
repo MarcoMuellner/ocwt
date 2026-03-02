@@ -1,0 +1,874 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ocwt — OpenCode + Git worktree launcher
+#
+# Usage:
+#   ocwt open
+#   ocwt open "build description here"
+#   ocwt open @path/to/spec.md
+#   ocwt close
+#   ocwt close feat/my-branch
+
+trim() {
+  local s="$1"
+  # trim leading
+  s="${s#"${s%%[![:space:]]*}"}"
+  # trim trailing
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
+expand_user_path() {
+  local p="$1"
+
+  if [[ "$p" == "~" ]]; then
+    printf '%s' "$HOME"
+    return 0
+  fi
+
+  if [[ "${p:0:2}" == "~/" ]]; then
+    printf '%s' "$HOME/${p#\~/}"
+    return 0
+  fi
+
+  printf '%s' "$p"
+}
+
+is_sourced() {
+  [[ "${BASH_SOURCE[0]}" != "$0" ]]
+}
+
+sanitize_branch() {
+  # Normalize LLM output:
+  # - take first line
+  # - remove quotes
+  # - lowercase
+  # - spaces/underscores -> hyphens
+  # - strip unsafe chars (keep a-z0-9 / . -)
+  # - collapse // and --
+  local s="$1"
+
+  # First line only
+  s="${s%%$'\n'*}"
+  s="$(trim "$s")"
+
+  # Remove wrapping quotes
+  s="${s#\"}"; s="${s%\"}"
+  s="${s#\'}"; s="${s%\'}"
+
+  # Remove triple-backtick fences if present (without using literal backticks)
+  # This strips any occurrence of three backtick characters via ASCII code 96.
+  local bt
+  bt="$(printf '\x60')" # backtick character
+  s="${s//${bt}${bt}${bt}/}"
+  s="$(trim "$s")"
+
+  # Lowercase
+  s="$(printf '%s' "$s" | tr '[:upper:]' '[:lower:]')"
+
+  # Replace spaces/underscores with hyphens
+  s="$(printf '%s' "$s" | tr ' _' '--')"
+
+  # Keep only safe branch chars
+  s="$(printf '%s' "$s" | tr -cd 'a-z0-9/.-')"
+
+  # Collapse multiple slashes
+  while [[ "$s" == *"//"* ]]; do s="${s//\/\//\/}"; done
+  # Collapse multiple hyphens
+  while [[ "$s" == *"--"* ]]; do s="${s//--/-}"; done
+
+  # Trim leading/trailing separators
+  s="${s#/}"
+  s="${s%/}"
+  s="${s#-}"
+  s="${s%-}"
+
+  printf '%s' "$s"
+}
+
+pick_main_branch() {
+  local repo_root="${1-.}"
+
+  if git -C "$repo_root" show-ref --verify --quiet refs/heads/main; then
+    printf 'main'
+  elif git -C "$repo_root" show-ref --verify --quiet refs/heads/master; then
+    printf 'master'
+  else
+    git -C "$repo_root" rev-parse --abbrev-ref HEAD
+  fi
+}
+
+worktree_dir_for_branch() {
+  local repo_root="$1"
+  local branch="$2"
+
+  local parent
+  parent="$(cd "$repo_root/.." && pwd)"
+
+  # Convert slashes to "__" for directory safety
+  local dir_name="${branch//\//__}"
+
+  printf '%s' "$parent/.worktrees/$dir_name"
+}
+
+primary_repo_root() {
+  local git_root="$1"
+  local common_dir
+
+  common_dir="$(git -C "$git_root" rev-parse --git-common-dir)"
+  if [[ "$common_dir" != /* ]]; then
+    common_dir="$(cd "$git_root/$common_dir" && pwd)"
+  fi
+
+  cd "$common_dir/.." && pwd
+}
+
+find_worktree_for_branch() {
+  local repo_root="$1"
+  local target_branch="$2"
+  local line
+  local wt_path=""
+
+  while IFS= read -r line; do
+    case "$line" in
+      worktree\ *)
+        wt_path="${line#worktree }"
+        ;;
+      branch\ refs/heads/*)
+        if [[ "${line#branch refs/heads/}" == "$target_branch" ]]; then
+          printf '%s' "$wt_path"
+          return 0
+        fi
+        ;;
+    esac
+  done < <(git -C "$repo_root" worktree list --porcelain)
+
+  return 1
+}
+
+list_worktree_branch_paths() {
+  local repo_root="$1"
+  local line
+  local wt_path=""
+
+  while IFS= read -r line; do
+    case "$line" in
+      worktree\ *)
+        wt_path="${line#worktree }"
+        ;;
+      branch\ refs/heads/*)
+        printf '%s\t%s\n' "${line#branch refs/heads/}" "$wt_path"
+        ;;
+    esac
+  done < <(git -C "$repo_root" worktree list --porcelain)
+}
+
+find_branch_for_worktree_path() {
+  local repo_root="$1"
+  local target_path="$2"
+  local resolved_path
+  local resolved_wt_path
+  local branch
+  local wt_path
+
+  if ! resolved_path="$(cd "$target_path" 2>/dev/null && pwd -P)"; then
+    return 1
+  fi
+
+  while IFS=$'\t' read -r branch wt_path; do
+    if ! resolved_wt_path="$(cd "$wt_path" 2>/dev/null && pwd -P)"; then
+      continue
+    fi
+    if [[ "$resolved_wt_path" == "$resolved_path" ]]; then
+      printf '%s' "$branch"
+      return 0
+    fi
+  done < <(list_worktree_branch_paths "$repo_root")
+
+  return 1
+}
+
+choose_closure_branch() {
+  local repo_root="$1"
+  local base="$2"
+  local branch
+  local wt_path
+  local choice
+  local -a branches=()
+
+  while IFS=$'\t' read -r branch wt_path; do
+    [[ -z "$branch" ]] && continue
+    if [[ "$branch" == "main" || "$branch" == "master" || "$branch" == "$base" ]]; then
+      continue
+    fi
+    branches+=("$branch")
+  done < <(list_worktree_branch_paths "$repo_root")
+
+  if (( ${#branches[@]} == 0 )); then
+    echo "No linked worktree branches available to close." >&2
+    return 1
+  fi
+
+  if [[ ! -t 0 ]]; then
+    echo "No branch provided. Run: ocwt close <branch>." >&2
+    return 1
+  fi
+
+  if command -v fzf >/dev/null 2>&1; then
+    if ! choice="$(printf '%s\n' "${branches[@]}" | fzf --height 40% --layout=reverse --border --prompt "close> " --header "Select worktree branch to close (arrows + Enter)")"; then
+      echo "Selection cancelled." >&2
+      return 1
+    fi
+    choice="$(trim "$choice")"
+    if [[ -z "$choice" ]]; then
+      echo "No selection provided. Exiting." >&2
+      return 1
+    fi
+    printf '%s' "$choice"
+    return 0
+  fi
+
+  echo "fzf not found. Install fzf for arrow-key selection, or run: ocwt close <branch>" >&2
+
+  # Fallback: exact branch name input
+  echo "Enter branch to close:" >&2
+  printf "> " >&2
+  IFS= read -r choice
+  choice="$(trim "$choice")"
+
+  if [[ -z "$choice" ]]; then
+    echo "No selection provided. Exiting." >&2
+    return 1
+  fi
+
+  for branch in "${branches[@]}"; do
+    if [[ "$branch" == "$choice" ]]; then
+      printf '%s' "$branch"
+      return 0
+    fi
+  done
+
+  echo "Unknown branch: $choice" >&2
+  return 1
+}
+
+print_completion_branches() {
+  local mode="${1-open}"
+  local git_root
+  local repo_root
+  local base
+  local branch
+  local wt_path
+
+  if ! git_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+    return 0
+  fi
+
+  repo_root="$(primary_repo_root "$git_root")"
+  base="$(pick_main_branch "$repo_root")"
+
+  while IFS=$'\t' read -r branch wt_path; do
+    [[ -z "$branch" ]] && continue
+    if [[ "$mode" == "closure" ]]; then
+      if [[ "$branch" == "main" || "$branch" == "master" || "$branch" == "$base" ]]; then
+        continue
+      fi
+    fi
+    printf '%s\n' "$branch"
+  done < <(list_worktree_branch_paths "$repo_root")
+}
+
+print_completion_worktrees() {
+  local git_root
+  local repo_root
+  local base
+  local branch
+  local wt_path
+
+  if ! git_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+    return 0
+  fi
+
+  repo_root="$(primary_repo_root "$git_root")"
+  base="$(pick_main_branch "$repo_root")"
+
+  while IFS=$'\t' read -r branch wt_path; do
+    [[ -z "$branch" ]] && continue
+    if [[ "$branch" == "main" || "$branch" == "master" || "$branch" == "$base" ]]; then
+      continue
+    fi
+    printf '%s\n' "$branch"
+  done < <(list_worktree_branch_paths "$repo_root")
+}
+
+completion_script() {
+  cat <<'EOF'
+_ocwt_complete() {
+  local cur prev cmd branches
+  local path_cur f prefix
+  local cur_start idx before_char
+  local ocwt_cmd cli word
+  COMPREPLY=()
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]:-}"
+  ocwt_cmd="${COMP_WORDS[0]:-ocwt}"
+  cli="$ocwt_cmd"
+  if ! command -v "$cli" >/dev/null 2>&1; then
+    if command -v ocwt >/dev/null 2>&1; then
+      cli="ocwt"
+    elif command -v octw >/dev/null 2>&1; then
+      cli="octw"
+    fi
+  fi
+
+  # bash uses 0-based COMP_WORDS, zsh+bashcompinit may behave differently.
+  if [[ $COMP_CWORD -eq 1 ]]; then
+    COMPREPLY=( $(compgen -W "open close help -h --help completion" -- "$cur") )
+    return 0
+  fi
+
+  cmd=""
+  for word in "${COMP_WORDS[@]}"; do
+    case "$word" in
+      open|close|closure|help|-h|--help|completion)
+        cmd="$word"
+        break
+        ;;
+    esac
+  done
+
+  case "$cmd" in
+    open)
+      path_cur="$cur"
+      prefix=""
+      if [[ "$cur" == @* ]]; then
+        path_cur="${cur#@}"
+        prefix="@"
+      else
+        cur_start=$((COMP_POINT - ${#cur}))
+        if (( cur_start > 0 )); then
+          idx=$((cur_start - 1))
+          before_char="${COMP_LINE:$idx:1}"
+          if [[ "$before_char" == "@" || "$prev" == "@" ]]; then
+            path_cur="$cur"
+            prefix="@"
+          fi
+        fi
+      fi
+
+      compopt -o filenames 2>/dev/null || true
+      COMPREPLY=()
+      while IFS= read -r f; do
+        COMPREPLY+=("${prefix}${f}")
+      done < <(compgen -f -- "$path_cur")
+      ;;
+    close|closure)
+      branches="$($cli __complete_worktrees 2>/dev/null)"
+      COMPREPLY=( $(compgen -W "$branches" -- "$cur") )
+      ;;
+  esac
+}
+
+if [[ -n "${ZSH_VERSION:-}" ]]; then
+  autoload -U +X bashcompinit >/dev/null 2>&1 && bashcompinit
+fi
+
+complete -o bashdefault -o default -F _ocwt_complete ocwt
+complete -o bashdefault -o default -F _ocwt_complete octw
+EOF
+}
+
+ensure_opencode_symlink() {
+  local repo_root="$1"
+  local wt_dir="$2"
+  local main_opencode="$repo_root/.opencode"
+  local wt_opencode="$wt_dir/.opencode"
+  local main_real
+  local wt_real
+  local backup
+  local ts
+
+  if [[ "$wt_dir" == "$repo_root" ]]; then
+    return 0
+  fi
+
+  if [[ ! -e "$main_opencode" && ! -L "$main_opencode" && -e "$wt_opencode" && ! -L "$wt_opencode" ]]; then
+    mv "$wt_opencode" "$main_opencode"
+    echo "Promoted existing worktree .opencode to main: $main_opencode"
+  fi
+
+  if [[ -e "$main_opencode" && ! -d "$main_opencode" ]]; then
+    echo "Main .opencode exists but is not a directory: $main_opencode"
+    exit 1
+  fi
+
+  mkdir -p "$main_opencode"
+  main_real="$(cd "$main_opencode" && pwd -P)"
+
+  if [[ -L "$wt_opencode" ]]; then
+    if wt_real="$(cd "$wt_opencode" 2>/dev/null && pwd -P)"; then
+      if [[ "$wt_real" == "$main_real" ]]; then
+        return 0
+      fi
+    fi
+  fi
+
+  if [[ -e "$wt_opencode" || -L "$wt_opencode" ]]; then
+    ts="$(date +%Y%m%d-%H%M%S)"
+    backup="${wt_opencode}.local-${ts}"
+    mv "$wt_opencode" "$backup"
+    echo "Moved existing worktree .opencode to: $backup"
+  fi
+
+  ln -s "$main_opencode" "$wt_opencode"
+}
+
+ensure_idea_symlink() {
+  local repo_root="$1"
+  local wt_dir="$2"
+  local main_idea="$repo_root/.idea"
+  local wt_idea="$wt_dir/.idea"
+  local current_target
+  local backup
+  local ts
+
+  if [[ "$wt_dir" == "$repo_root" ]]; then
+    return 0
+  fi
+
+  if [[ ! -e "$main_idea" && ! -L "$main_idea" ]]; then
+    return 0
+  fi
+
+  if [[ -e "$main_idea" && ! -d "$main_idea" ]]; then
+    echo "Main .idea exists but is not a directory: $main_idea"
+    exit 1
+  fi
+
+  if [[ -L "$wt_idea" ]]; then
+    current_target="$(readlink "$wt_idea" || true)"
+    if [[ "$current_target" == "$main_idea" ]]; then
+      return 0
+    fi
+  fi
+
+  if [[ -e "$wt_idea" || -L "$wt_idea" ]]; then
+    ts="$(date +%Y%m%d-%H%M%S)"
+    backup="${wt_idea}.local-${ts}"
+    mv "$wt_idea" "$backup"
+    echo "Moved existing worktree .idea to: $backup"
+  fi
+
+  ln -s "$main_idea" "$wt_idea"
+}
+
+ensure_env_symlinks() {
+  local repo_root="$1"
+  local wt_dir="$2"
+  local main_env
+  local name
+  local rel
+  local wt_env
+  local current_target
+  local backup
+  local ts
+
+  if [[ "$wt_dir" == "$repo_root" ]]; then
+    return 0
+  fi
+
+  for main_env in "$repo_root"/.env "$repo_root"/.env.*; do
+    if [[ ! -e "$main_env" && ! -L "$main_env" ]]; then
+      continue
+    fi
+
+    if [[ -d "$main_env" ]]; then
+      continue
+    fi
+
+    name="${main_env##*/}"
+    rel="$name"
+
+    # Skip tracked .env files to avoid replacing repository files with symlinks.
+    if git -C "$repo_root" ls-files --error-unmatch -- "$rel" >/dev/null 2>&1; then
+      continue
+    fi
+
+    wt_env="$wt_dir/$name"
+    if [[ -L "$wt_env" ]]; then
+      current_target="$(readlink "$wt_env" || true)"
+      if [[ "$current_target" == "$main_env" ]]; then
+        continue
+      fi
+    fi
+
+    if [[ -e "$wt_env" || -L "$wt_env" ]]; then
+      ts="$(date +%Y%m%d-%H%M%S)"
+      backup="${wt_env}.local-${ts}"
+      mv "$wt_env" "$backup"
+      echo "Moved existing worktree $name to: $backup"
+    fi
+
+    ln -s "$main_env" "$wt_env"
+  done
+}
+
+open_worktree() {
+  local build_input="${*:-}"
+  local build_desc=""
+  local fallback_seed=""
+  local source_file
+  local source_file_abs
+  local source_file_name
+  local clean_token
+  local has_mentions=false
+  local mentions_summary=""
+  local -a mention_files=()
+  local -a mention_abs_files=()
+  local -a opencode_files=()
+  local -a input_args=("$@")
+  local existing_wt
+  local candidate
+  local branch
+
+  if [[ -z "$build_input" ]]; then
+    printf "What do you want to build? "
+    IFS= read -r build_input
+    input_args=("$build_input")
+  fi
+  build_input="$(trim "$build_input")"
+  if [[ -z "$build_input" ]]; then
+    echo "No description provided. Exiting."
+    exit 1
+  fi
+
+  for clean_token in "${input_args[@]}"; do
+    if [[ "$clean_token" == @* ]]; then
+      clean_token="${clean_token#@}"
+      clean_token="${clean_token%,}"
+      clean_token="${clean_token%.}"
+      clean_token="${clean_token%;}"
+      clean_token="${clean_token%:}"
+      clean_token="$(trim "$clean_token")"
+      if [[ -n "$clean_token" ]]; then
+        mention_files+=("$clean_token")
+      fi
+    fi
+  done
+
+  if (( ${#mention_files[@]} == 0 )); then
+    for clean_token in $build_input; do
+      if [[ "$clean_token" == @* ]]; then
+        clean_token="${clean_token#@}"
+        clean_token="${clean_token%,}"
+        clean_token="${clean_token%.}"
+        clean_token="${clean_token%;}"
+        clean_token="${clean_token%:}"
+        clean_token="$(trim "$clean_token")"
+        if [[ -n "$clean_token" ]]; then
+          mention_files+=("$clean_token")
+        fi
+      fi
+    done
+  fi
+
+  if (( ${#mention_files[@]} > 0 )); then
+    has_mentions=true
+    fallback_seed="$build_input"
+
+    for source_file in "${mention_files[@]}"; do
+      source_file="$(expand_user_path "$source_file")"
+      if [[ ! -f "$source_file" ]]; then
+        echo "Mentioned file not found: $source_file"
+        exit 1
+      fi
+
+      source_file_abs="$(cd "$(dirname "$source_file")" && pwd -P)/$(basename "$source_file")"
+      mention_abs_files+=("$source_file_abs")
+      opencode_files+=("--file" "$source_file_abs")
+
+      if [[ -z "$mentions_summary" ]]; then
+        mentions_summary="- $source_file_abs"
+      else
+        mentions_summary+=$'\n'
+        mentions_summary+="- $source_file_abs"
+      fi
+    done
+
+    build_desc="Build request: $build_input"
+    if [[ -n "$mentions_summary" ]]; then
+      build_desc+=$'\n\n'
+      build_desc+="Use these attached files as context:"
+      build_desc+=$'\n'
+      build_desc+="$mentions_summary"
+    fi
+
+    if (( ${#mention_abs_files[@]} > 0 )); then
+      source_file_name="$(basename "${mention_abs_files[0]}")"
+      fallback_seed="$source_file_name"
+    fi
+  else
+    build_desc="$build_input"
+    fallback_seed="$build_input"
+  fi
+
+  local current_git_root
+  if ! current_git_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+    echo "Not inside a git repository."
+    exit 1
+  fi
+
+  local repo_root
+  repo_root="$(primary_repo_root "$current_git_root")"
+
+  if ! command -v opencode >/dev/null 2>&1; then
+    echo "opencode not found in PATH."
+    exit 1
+  fi
+
+  if [[ "$has_mentions" == false ]] && existing_wt="$(find_worktree_for_branch "$repo_root" "$build_input")"; then
+    echo "Opening existing worktree for branch: $build_input"
+    echo "Worktree  : $existing_wt"
+    ensure_opencode_symlink "$repo_root" "$existing_wt"
+    ensure_idea_symlink "$repo_root" "$existing_wt"
+    ensure_env_symlinks "$repo_root" "$existing_wt"
+    cd "$existing_wt"
+    exec opencode .
+  fi
+
+  if [[ "$has_mentions" == false ]]; then
+    candidate="$(sanitize_branch "$build_input")"
+    if [[ "$candidate" =~ ^(feat|bugfix|fix|chore|docs|refactor|test|perf)/[a-z0-9][a-z0-9.-]*$ ]]; then
+      branch="$candidate"
+    fi
+  fi
+
+  # One-shot prompt to get a semantic branch name
+  if [[ -z "$branch" ]]; then
+    local prompt
+    prompt=$(
+      cat <<'EOF'
+You are generating a git branch name.
+
+Rules:
+- Output ONLY the branch name, nothing else (no explanations, no code fences).
+- Use ONE of these prefixes based on semantics:
+  feat/, bugfix/, fix/, chore/, docs/, refactor/, test/, perf/
+- Use lowercase.
+- Use slashes only for the prefix. Use hyphens in the rest.
+- Keep it reasonably short.
+
+Task description:
+EOF
+    )
+
+    local raw_branch
+    if ! raw_branch="$(
+      opencode run "${opencode_files[@]}" "$prompt $build_desc" | awk 'NF { last=$0 } END { print last }'
+    )"; then
+      echo "Failed to generate branch name with opencode."
+      exit 1
+    fi
+
+    branch="$(sanitize_branch "$raw_branch")"
+
+    if [[ ! "$branch" =~ ^(feat|bugfix|fix|chore|docs|refactor|test|perf)/[a-z0-9][a-z0-9.-]*$ ]]; then
+      local fallback
+      fallback="$(sanitize_branch "$fallback_seed")"
+      fallback="${fallback//\//-}"
+      fallback="${fallback#-}"
+      fallback="${fallback%-}"
+      branch="feat/${fallback:-worktree}"
+      echo "OpenCode returned an invalid branch name: '$raw_branch'"
+      echo "Using fallback branch: '$branch'"
+    fi
+  fi
+
+  local base
+  base="$(pick_main_branch "$repo_root")"
+
+  if existing_wt="$(find_worktree_for_branch "$repo_root" "$branch")"; then
+    echo "Opening existing worktree for branch: $branch"
+    echo "Worktree  : $existing_wt"
+    ensure_opencode_symlink "$repo_root" "$existing_wt"
+    ensure_idea_symlink "$repo_root" "$existing_wt"
+    ensure_env_symlinks "$repo_root" "$existing_wt"
+    cd "$existing_wt"
+    exec opencode .
+  fi
+
+  local wt_dir
+  wt_dir="$(worktree_dir_for_branch "$repo_root" "$branch")"
+
+  mkdir -p "$(dirname "$wt_dir")"
+
+  if [[ -e "$wt_dir" ]]; then
+    echo "Worktree directory already exists: $wt_dir"
+    echo "Delete it or choose a different branch name."
+    exit 1
+  fi
+
+  echo "Repo root : $repo_root"
+  echo "Base      : $base"
+  echo "Branch    : $branch"
+  echo "Worktree  : $wt_dir"
+  echo
+
+  if git -C "$repo_root" show-ref --verify --quiet "refs/heads/$branch"; then
+    git -C "$repo_root" worktree add "$wt_dir" "$branch"
+  else
+    git -C "$repo_root" worktree add -b "$branch" "$wt_dir" "$base"
+  fi
+
+  ensure_opencode_symlink "$repo_root" "$wt_dir"
+  ensure_idea_symlink "$repo_root" "$wt_dir"
+  ensure_env_symlinks "$repo_root" "$wt_dir"
+
+  cd "$wt_dir"
+  exec opencode .
+}
+
+close_worktree() {
+  local branch="${1-}"
+  local maybe_path=""
+
+  local current_git_root
+  if ! current_git_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+    echo "Not inside a git repository."
+    exit 1
+  fi
+
+  local repo_root
+  repo_root="$(primary_repo_root "$current_git_root")"
+
+  local base
+  base="$(pick_main_branch "$repo_root")"
+
+  if [[ -z "$branch" ]]; then
+    if ! branch="$(choose_closure_branch "$repo_root" "$base")"; then
+      exit 1
+    fi
+  else
+    maybe_path="$branch"
+    if [[ -e "$maybe_path" ]]; then
+      if branch="$(find_branch_for_worktree_path "$repo_root" "$maybe_path")"; then
+        :
+      else
+        echo "Path is not a registered branch worktree: $maybe_path"
+        exit 1
+      fi
+    fi
+  fi
+
+  if [[ "$branch" == "main" || "$branch" == "master" || "$branch" == "$base" ]]; then
+    echo "Refusing to delete protected branch: $branch"
+    exit 1
+  fi
+
+  local wt_dir
+  local registered_worktree=false
+  if wt_dir="$(find_worktree_for_branch "$repo_root" "$branch")"; then
+    registered_worktree=true
+  else
+    wt_dir="$(worktree_dir_for_branch "$repo_root" "$branch")"
+  fi
+
+  if [[ "$wt_dir" == "$repo_root" ]]; then
+    echo "Refusing to remove the main worktree."
+    exit 1
+  fi
+
+  echo "Repo root : $repo_root"
+  echo "Branch    : $branch"
+  echo "Worktree  : $wt_dir"
+  echo
+
+  if [[ "$current_git_root" == "$wt_dir" ]]; then
+    cd "$repo_root"
+  fi
+
+  if [[ "$registered_worktree" == true ]]; then
+    if ! git -C "$repo_root" worktree remove "$wt_dir" 2>/dev/null; then
+      git -C "$repo_root" worktree remove --force "$wt_dir"
+    fi
+  elif [[ -e "$wt_dir" ]]; then
+    echo "Directory exists but is not registered as a worktree: $wt_dir"
+    exit 1
+  fi
+
+  if git -C "$repo_root" show-ref --verify --quiet "refs/heads/$branch"; then
+    git -C "$repo_root" branch -D "$branch"
+  else
+    echo "Local branch not found (already deleted): $branch"
+  fi
+
+  echo
+  echo "Closed worktree and deleted local branch."
+  if is_sourced; then
+    cd "$repo_root"
+    echo "Returned to main directory: $repo_root"
+  else
+    echo "Main directory: $repo_root"
+    echo "Run: cd \"$repo_root\""
+  fi
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ocwt open [build description|branch]
+  ocwt open @path/to/spec.md
+  ocwt close [branch|worktree-path]
+  ocwt completion
+
+Commands:
+  open       Open an existing worktree branch, or create a new branch + worktree.
+  close      Remove the branch worktree and delete the local branch.
+  completion Print shell completion script for bash/zsh.
+
+Notes:
+  - If branch is omitted for close, you can choose interactively.
+  - `open` with no argument prompts for what to build and creates a new worktree.
+  - `open @file` uses filename + file contents as build intent for branch generation.
+  - Tab completion for `open @...` suggests local files.
+  - Linked worktrees use `.opencode` as a symlink to the main repo's `.opencode`.
+  - If main repo has `.idea`, linked worktrees symlink `.idea` to that directory.
+  - Untracked root `.env`/`.env.*` files are symlinked from main repo into linked worktrees.
+  - For backward compatibility, running `ocwt "description"` acts like `ocwt open "description"`.
+EOF
+}
+
+main() {
+  local cmd="${1-open}"
+
+  case "$cmd" in
+    open)
+      shift || true
+      open_worktree "$@"
+      ;;
+    close|closure)
+      shift || true
+      close_worktree "${1-}"
+      ;;
+    completion)
+      completion_script
+      ;;
+    __complete_branches)
+      shift || true
+      print_completion_branches "${1-open}"
+      ;;
+    __complete_worktrees)
+      print_completion_worktrees
+      ;;
+    help|-h|--help)
+      usage
+      ;;
+    *)
+      # Backward compatibility: treat unknown first arg as build description.
+      open_worktree "$@"
+      ;;
+  esac
+}
+
+main "$@"
