@@ -11,3 +11,13 @@ def test_complete_at_files_keeps_at_prefix(tmp_path: Path, monkeypatch) -> None:
     results = complete_at_files("@sp")
 
     assert "@spec.md" in results
+
+
+def test_complete_at_files_ignores_non_at_prefix(tmp_path: Path, monkeypatch) -> None:
+    file_path = tmp_path / "spec.md"
+    file_path.write_text("x", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    results = complete_at_files("sp")
+
+    assert results == []
