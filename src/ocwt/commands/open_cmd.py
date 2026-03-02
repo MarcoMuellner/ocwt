@@ -78,6 +78,43 @@ def _extract_mentions(build_input: str, cli_mentions: tuple[str, ...]) -> list[s
     return mentions
 
 
+def _resolve_direct_file_input(build_input: str) -> Path | None:
+    candidate = Path(build_input).expanduser()
+    if candidate.is_file():
+        return candidate.resolve()
+    return None
+
+
+def _file_context_slug(file_path: Path) -> str:
+    parent_name = file_path.parent.name.strip()
+    stem = file_path.stem.strip()
+
+    parent_slug = sanitize_branch(parent_name).replace("/", "-").strip("-") if parent_name else ""
+    stem_slug = sanitize_branch(stem).replace("/", "-").strip("-") if stem else ""
+
+    parts = [part for part in (parent_slug, stem_slug) if part]
+    if not parts:
+        return ""
+    return "-".join(parts)
+
+
+def _ensure_branch_has_file_slug(branch: str, file_slug: str) -> str:
+    normalized_slug = sanitize_branch(file_slug).replace("/", "-").strip("-")
+    if not normalized_slug:
+        return branch
+    if not is_valid_prefixed_branch(branch):
+        return branch
+
+    prefix, suffix = branch.split("/", 1)
+    if normalized_slug in suffix:
+        return branch
+
+    candidate = sanitize_branch(f"{prefix}/{suffix}-{normalized_slug}")
+    if is_valid_prefixed_branch(candidate):
+        return candidate
+    return branch
+
+
 def _build_branch_prompt(build_desc: str) -> str:
     return (
         "You are generating a git branch name.\n\n"
@@ -337,6 +374,9 @@ def run_open(options: OpenOptions) -> int:
     plan_mode = options.plan or config.auto_plan
     effective_editor, should_open_editor = _resolve_editor_behavior(options, config)
     mentions = _extract_mentions(build_input, options.at_files)
+    direct_file_input = _resolve_direct_file_input(build_input)
+    if direct_file_input is not None and str(direct_file_input) not in mentions:
+        mentions.insert(0, str(direct_file_input))
 
     existing_direct = None if mentions else find_worktree_for_branch(repo_root, build_input)
     if existing_direct is not None:
@@ -356,6 +396,7 @@ def run_open(options: OpenOptions) -> int:
     attached_files: list[Path] = []
     fallback_seed = build_input
     build_desc = build_input
+    file_slug = ""
 
     if mentions:
         summary_items: list[str] = []
@@ -369,7 +410,8 @@ def run_open(options: OpenOptions) -> int:
             summary_items.append(f"- {abs_path}")
 
         if attached_files:
-            fallback_seed = attached_files[0].name
+            file_slug = _file_context_slug(attached_files[0])
+            fallback_seed = file_slug or attached_files[0].stem
         summary_block = "\n".join(summary_items)
         build_desc = (
             f"Build request: {build_input}\n\nUse these attached files as context:\n{summary_block}"
@@ -389,6 +431,9 @@ def run_open(options: OpenOptions) -> int:
         except RuntimeError as exc:
             typer.echo(str(exc), err=True)
             return 1
+
+    if file_slug:
+        branch = _ensure_branch_has_file_slug(branch, file_slug)
 
     base = pick_main_branch(repo_root)
 

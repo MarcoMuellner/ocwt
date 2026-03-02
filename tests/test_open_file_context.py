@@ -1,0 +1,119 @@
+from pathlib import Path
+
+import pytest
+
+from ocwt.commands.open_cmd import (
+    OpenOptions,
+    _ensure_branch_has_file_slug,
+    _file_context_slug,
+    run_open,
+)
+from ocwt.config_store import OcwtConfig
+
+
+def test_file_context_slug_uses_parent_and_stem() -> None:
+    file_path = Path("epic_payment/ticket_refund_flow.md")
+
+    assert _file_context_slug(file_path) == "epic-payment-ticket-refund-flow"
+
+
+def test_file_context_slug_keeps_numeric_identifiers() -> None:
+    file_path = Path("epic_123/ticket_456_refund.md")
+
+    assert _file_context_slug(file_path) == "epic-123-ticket-456-refund"
+
+
+def test_ensure_branch_has_file_slug_appends_slug() -> None:
+    branch = _ensure_branch_has_file_slug("feat/add-refund", "epic-payment-ticket-refund-flow")
+
+    assert branch == "feat/add-refund-epic-payment-ticket-refund-flow"
+
+
+def test_ensure_branch_has_file_slug_keeps_existing_slug() -> None:
+    branch = _ensure_branch_has_file_slug(
+        "fix/refund-crash-epic-payment-ticket-refund-flow",
+        "epic-payment-ticket-refund-flow",
+    )
+
+    assert branch == "fix/refund-crash-epic-payment-ticket-refund-flow"
+
+
+def test_ensure_branch_has_file_slug_preserves_numbers() -> None:
+    branch = _ensure_branch_has_file_slug("feat/refund-flow", "epic-123-ticket-456-refund")
+
+    assert branch == "feat/refund-flow-epic-123-ticket-456-refund"
+
+
+def test_open_plan_auto_injects_direct_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    target_file = repo_root / "epic_payment" / "ticket_refund.md"
+    target_file.parent.mkdir(parents=True)
+    target_file.write_text("details", encoding="utf-8")
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr("ocwt.commands.open_cmd.shutil.which", lambda _name: "/usr/bin/opencode")
+    monkeypatch.setattr("ocwt.commands.open_cmd.get_current_git_root", lambda: repo_root)
+    monkeypatch.setattr("ocwt.commands.open_cmd.primary_repo_root", lambda _root: repo_root)
+    monkeypatch.setattr("ocwt.commands.open_cmd.find_worktree_for_branch", lambda *_args: None)
+    monkeypatch.setattr("ocwt.commands.open_cmd.pick_main_branch", lambda _repo_root: "main")
+    monkeypatch.setattr("ocwt.commands.open_cmd.local_branch_exists", lambda *_args: False)
+    monkeypatch.setattr("ocwt.commands.open_cmd.run_git", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("ocwt.commands.open_cmd._ensure_repo_symlinks", lambda *_args: True)
+    monkeypatch.setattr("ocwt.commands.open_cmd._launch_editor_if_enabled", lambda *_args: None)
+    monkeypatch.setattr(
+        "ocwt.commands.open_cmd._load_runtime_config",
+        lambda: OcwtConfig(
+            editor="none",
+            open_editor=False,
+            agent="build",
+            auto_plan=False,
+            prompt_file=None,
+            branch_prompt_file=None,
+            worktree_parent=".worktrees",
+            symlink_opencode=True,
+            symlink_idea=True,
+            symlink_env=True,
+        ),
+    )
+    monkeypatch.setattr(
+        "ocwt.commands.open_cmd._generate_branch_name",
+        lambda *_args: "feat/refund-flow",
+    )
+
+    def fake_open_session(
+        _worktree_dir: Path,
+        build_desc: str,
+        attached_files: list[Path],
+        plan_mode: bool,
+        agent: str,
+    ) -> int:
+        captured["build_desc"] = build_desc
+        captured["attached_files"] = attached_files
+        captured["plan_mode"] = plan_mode
+        captured["agent"] = agent
+        return 0
+
+    monkeypatch.setattr("ocwt.commands.open_cmd._open_session", fake_open_session)
+
+    result = run_open(
+        OpenOptions(
+            intent_or_branch=str(target_file),
+            at_files=(),
+            plan=True,
+            agent=None,
+            editor=None,
+        )
+    )
+
+    assert result == 0
+    assert captured["plan_mode"] is True
+    assert captured["agent"] == "build"
+    attached = captured["attached_files"]
+    assert isinstance(attached, list)
+    assert attached == [target_file.resolve()]
+    assert "Use these attached files as context" in str(captured["build_desc"])
