@@ -30,3 +30,17 @@ def test_config_reset_all(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
 
     assert reset_result.exit_code == 0
     assert get_result.stdout.strip() == "build"
+
+
+def test_config_auto_pull_convenience_setter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    runner = CliRunner()
+
+    set_result = runner.invoke(app, ["config", "auto-pull", "true"])
+    get_result = runner.invoke(app, ["config", "get", "auto_pull"])
+
+    assert set_result.exit_code == 0
+    assert get_result.exit_code == 0
+    assert get_result.stdout.strip() == "True"

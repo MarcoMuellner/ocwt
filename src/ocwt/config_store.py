@@ -12,6 +12,7 @@ class OcwtConfig:
     open_editor: bool
     agent: str
     auto_plan: bool
+    auto_pull: bool
     prompt_file: str | None
     branch_prompt_file: str | None
     worktree_parent: str
@@ -28,6 +29,7 @@ VALID_CONFIG_KEYS = {
     "open_editor",
     "agent",
     "auto_plan",
+    "auto_pull",
     "prompt_file",
     "branch_prompt_file",
     "worktree_parent",
@@ -36,7 +38,14 @@ VALID_CONFIG_KEYS = {
     "symlink_env",
 }
 
-BOOL_KEYS = {"open_editor", "auto_plan", "symlink_opencode", "symlink_idea", "symlink_env"}
+BOOL_KEYS = {
+    "open_editor",
+    "auto_plan",
+    "auto_pull",
+    "symlink_opencode",
+    "symlink_idea",
+    "symlink_env",
+}
 OPTIONAL_PATH_KEYS = {"prompt_file", "branch_prompt_file"}
 
 
@@ -51,6 +60,7 @@ def default_config() -> OcwtConfig:
         open_editor=False,
         agent="build",
         auto_plan=False,
+        auto_pull=False,
         prompt_file=None,
         branch_prompt_file=None,
         worktree_parent=".worktrees",
@@ -114,6 +124,7 @@ def validate_config(data: dict[str, object]) -> OcwtConfig:
         open_editor=_require_bool("open_editor", merged["open_editor"]),
         agent=_require_str("agent", merged["agent"]),
         auto_plan=_require_bool("auto_plan", merged["auto_plan"]),
+        auto_pull=_require_bool("auto_pull", merged["auto_pull"]),
         prompt_file=_optional_str("prompt_file", merged["prompt_file"]),
         branch_prompt_file=_optional_str("branch_prompt_file", merged["branch_prompt_file"]),
         worktree_parent=_require_str("worktree_parent", merged["worktree_parent"]),

@@ -9,6 +9,7 @@ from ocwt.commands.completion_cmd import run_complete_worktrees, run_completion
 from ocwt.commands.config_cmd import (
     run_config_agent,
     run_config_auto_plan,
+    run_config_auto_pull,
     run_config_branch_prompt_file,
     run_config_editor,
     run_config_get,
@@ -163,6 +164,13 @@ def config_worktree_parent_command(
 @config_app.command("auto-plan")
 def config_auto_plan_command(value: Annotated[str, typer.Argument(help="true or false")]) -> None:
     exit_code = run_config_auto_plan(value)
+    if exit_code != 0:
+        raise typer.Exit(code=exit_code)
+
+
+@config_app.command("auto-pull")
+def config_auto_pull_command(value: Annotated[str, typer.Argument(help="true or false")]) -> None:
+    exit_code = run_config_auto_pull(value)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
 

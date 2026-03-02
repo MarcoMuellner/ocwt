@@ -148,7 +148,10 @@ def _generate_branch_name(
         check=False,
     )
     if proc.returncode != 0:
-        raise RuntimeError("Failed to generate branch name with opencode.")
+        stderr = proc.stderr.strip() if proc.stderr else ""
+        stdout = proc.stdout.strip() if proc.stdout else ""
+        detail = stderr or stdout or "opencode run returned a non-zero exit code"
+        raise RuntimeError(f"Failed to generate branch name with opencode: {detail}")
 
     non_empty = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
     raw_branch = non_empty[-1] if non_empty else ""
@@ -349,6 +352,20 @@ def _launch_editor_if_enabled(worktree_dir: Path, editor: str | None, should_ope
         typer.echo(f"Warning: failed to launch editor '{editor}': {exc}", err=True)
 
 
+def _pull_repo_if_enabled(repo_root: Path, auto_pull: bool) -> bool:
+    if not auto_pull:
+        return True
+
+    typer.echo("Auto-pull enabled: pulling latest changes before creating worktree...")
+    try:
+        run_git(repo_root, ["pull", "--ff-only"])
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.strip() if exc.stderr else ""
+        typer.echo(stderr or "Auto-pull failed.", err=True)
+        return False
+    return True
+
+
 def run_open(options: OpenOptions) -> int:
     if shutil.which("opencode") is None:
         typer.echo("opencode not found in PATH.", err=True)
@@ -430,7 +447,8 @@ def run_open(options: OpenOptions) -> int:
             )
         except RuntimeError as exc:
             typer.echo(str(exc), err=True)
-            return 1
+            branch = fallback_branch(fallback_seed)
+            typer.echo(f"Using fallback branch: {branch}", err=True)
 
     if file_slug:
         branch = _ensure_branch_has_file_slug(branch, file_slug)
@@ -458,6 +476,9 @@ def run_open(options: OpenOptions) -> int:
     if worktree_dir.exists():
         typer.echo(f"Worktree directory already exists: {worktree_dir}", err=True)
         typer.echo("Delete it or choose a different branch name.", err=True)
+        return 1
+
+    if not _pull_repo_if_enabled(repo_root, config.auto_pull):
         return 1
 
     typer.echo(f"Repo root : {repo_root}")

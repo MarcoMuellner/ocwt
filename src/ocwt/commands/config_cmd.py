@@ -94,5 +94,9 @@ def run_config_auto_plan(value: str) -> int:
     return run_config_set("auto_plan", value)
 
 
+def run_config_auto_pull(value: str) -> int:
+    return run_config_set("auto_pull", value)
+
+
 def run_config_open_editor(value: str) -> int:
     return run_config_set("open_editor", value)
