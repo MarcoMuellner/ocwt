@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import subprocess
+import sys
+import termios
+import tty
 from pathlib import Path
 
 import typer
@@ -31,6 +34,105 @@ def _is_protected_branch(branch: str, base: str) -> bool:
     return branch in {"main", "master", base}
 
 
+def _read_menu_key() -> str:
+    """Read one keyboard action for interactive branch selection.
+
+    Args:
+        None.
+
+    Returns:
+        Normalized key token used by the menu loop.
+    """
+    first = sys.stdin.read(1)
+    if first in {"\r", "\n"}:
+        return "ENTER"
+    if first == "\x03":
+        return "CTRL_C"
+    if first != "\x1b":
+        return "OTHER"
+
+    second = sys.stdin.read(1)
+    if second != "[":
+        return "ESC"
+    third = sys.stdin.read(1)
+    if third == "A":
+        return "UP"
+    if third == "B":
+        return "DOWN"
+    return "ESC"
+
+
+def _render_branch_menu(candidates: list[str], selected_index: int) -> str:
+    """Render a compact interactive menu for branch selection.
+
+    Args:
+        candidates: Closeable branch names.
+        selected_index: Currently highlighted option index.
+
+    Returns:
+        Full terminal frame text for the current menu state.
+    """
+    lines = [
+        "Select worktree branch to close",
+        "Use arrow keys and press Enter",
+        "",
+    ]
+    for index, candidate in enumerate(candidates):
+        marker = ">" if index == selected_index else " "
+        lines.append(f" {marker} {candidate}")
+    lines.append("")
+    lines.append("Press Esc to cancel")
+    return "\n".join(lines)
+
+
+def _choose_branch_with_arrows(candidates: list[str]) -> str | None:
+    """Collect a branch choice through an arrow-key terminal menu.
+
+    Args:
+        candidates: Closeable branch names.
+
+    Returns:
+        Selected branch name, or ``None`` when selection is cancelled.
+    """
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return None
+
+    selected_index = 0
+    fd = sys.stdin.fileno()
+
+    try:
+        original = termios.tcgetattr(fd)
+    except termios.error:
+        return None
+
+    try:
+        tty.setcbreak(fd)
+        sys.stdout.write("\x1b[?1049h\x1b[?25l")
+        sys.stdout.flush()
+
+        while True:
+            frame = _render_branch_menu(candidates, selected_index)
+            sys.stdout.write("\x1b[2J\x1b[H")
+            sys.stdout.write(frame)
+            sys.stdout.flush()
+
+            key = _read_menu_key()
+            if key == "UP":
+                selected_index = (selected_index - 1) % len(candidates)
+                continue
+            if key == "DOWN":
+                selected_index = (selected_index + 1) % len(candidates)
+                continue
+            if key == "ENTER":
+                return candidates[selected_index]
+            if key in {"ESC", "CTRL_C"}:
+                return None
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, original)
+        sys.stdout.write("\x1b[?25h\x1b[?1049l")
+        sys.stdout.flush()
+
+
 def _choose_closure_branch(repo_root: Path, base: str) -> str | None:
     """Collect and interactively select a closeable worktree branch.
 
@@ -49,6 +151,14 @@ def _choose_closure_branch(repo_root: Path, base: str) -> str | None:
 
     if not candidates:
         typer.echo("No linked worktree branches available to close.", err=True)
+        return None
+
+    choice = _choose_branch_with_arrows(candidates)
+    if choice is not None:
+        return choice
+
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        typer.echo("Selection cancelled.", err=True)
         return None
 
     typer.echo("Select worktree branch to close:")
