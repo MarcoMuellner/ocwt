@@ -87,6 +87,26 @@ def find_worktree_for_branch(repo_root: Path, branch: str) -> Path | None:
     return None
 
 
+def list_worktree_branches(repo_root: Path) -> list[tuple[str, Path]]:
+    pairs: list[tuple[str, Path]] = []
+    for entry in list_worktrees(repo_root):
+        if entry.branch:
+            pairs.append((entry.branch, entry.path))
+    return pairs
+
+
+def find_branch_for_worktree_path(repo_root: Path, target_path: Path) -> str | None:
+    try:
+        resolved_target = target_path.resolve(strict=True)
+    except FileNotFoundError:
+        return None
+
+    for branch, worktree_path in list_worktree_branches(repo_root):
+        if worktree_path.resolve() == resolved_target:
+            return branch
+    return None
+
+
 def local_branch_exists(repo_root: Path, branch: str) -> bool:
     proc = run_git(
         repo_root, ["show-ref", "--verify", "--quiet", f"refs/heads/{branch}"], check=False

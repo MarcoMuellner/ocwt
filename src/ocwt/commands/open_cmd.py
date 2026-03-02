@@ -17,6 +17,7 @@ from ocwt.git_ops import (
     run_git,
     worktree_dir_for_branch,
 )
+from ocwt.symlinks import ensure_env_symlinks, ensure_idea_symlink, ensure_opencode_symlink
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,22 @@ def _launch_opencode(worktree_dir: Path) -> int:
     return int(proc.returncode)
 
 
+def _ensure_repo_symlinks(repo_root: Path, worktree_dir: Path) -> bool:
+    try:
+        messages = [
+            *ensure_opencode_symlink(repo_root, worktree_dir),
+            *ensure_idea_symlink(repo_root, worktree_dir),
+            *ensure_env_symlinks(repo_root, worktree_dir),
+        ]
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        return False
+
+    for message in messages:
+        typer.echo(message)
+    return True
+
+
 def run_open(options: OpenOptions) -> int:
     if shutil.which("opencode") is None:
         typer.echo("opencode not found in PATH.", err=True)
@@ -138,6 +155,8 @@ def run_open(options: OpenOptions) -> int:
     if existing_direct is not None:
         typer.echo(f"Opening existing worktree for branch: {build_input}")
         typer.echo(f"Worktree  : {existing_direct}")
+        if not _ensure_repo_symlinks(repo_root, existing_direct):
+            return 1
         return _launch_opencode(existing_direct)
 
     attached_files: list[Path] = []
@@ -181,6 +200,8 @@ def run_open(options: OpenOptions) -> int:
     if existing_worktree is not None:
         typer.echo(f"Opening existing worktree for branch: {branch}")
         typer.echo(f"Worktree  : {existing_worktree}")
+        if not _ensure_repo_symlinks(repo_root, existing_worktree):
+            return 1
         return _launch_opencode(existing_worktree)
 
     worktree_dir = worktree_dir_for_branch(repo_root, branch)
@@ -206,5 +227,8 @@ def run_open(options: OpenOptions) -> int:
         stderr = exc.stderr.strip() if exc.stderr else ""
         typer.echo(stderr or "Failed to create worktree.", err=True)
         return int(exc.returncode) if exc.returncode else 1
+
+    if not _ensure_repo_symlinks(repo_root, worktree_dir):
+        return 1
 
     return _launch_opencode(worktree_dir)
