@@ -1,0 +1,44 @@
+name: Nightly Release Build
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Compute nightly tag
+        id: nightly_tag
+        run: |
+          stamp="$(date -u +%Y%m%d)"
+          short_sha="${GITHUB_SHA::7}"
+          tag="nightly-${stamp}-${short_sha}"
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create nightly GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.nightly_tag.outputs.tag }}
+          name: Nightly ${{ steps.nightly_tag.outputs.tag }}
+          prerelease: true
+          generate_release_notes: true
+          files: dist/*
