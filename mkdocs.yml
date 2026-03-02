@@ -1,0 +1,38 @@
+site_name: ocwt
+site_description: OpenCode worktree CLI documentation
+repo_url: https://github.com/MarcoMuellner/ocwt
+repo_name: MarcoMuellner/ocwt
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - search.suggest
+    - search.highlight
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Quickstart: quickstart.md
+  - Commands:
+      - open: commands/open.md
+      - close: commands/close.md
+      - completion: commands/completion.md
+      - config: commands/config.md
+  - Concepts:
+      - Planning Mode: concepts/planning-mode.md
+      - Branch Naming: concepts/branch-naming.md
+      - Worktrees: concepts/worktrees.md
+  - Recipes:
+      - Open From File: recipes/from-file.md
+      - Team Workflow: recipes/team-workflows.md
+      - Release Flow: recipes/release-flow.md
+  - Troubleshooting: troubleshooting.md
+  - FAQ: faq.md
+  - Legacy:
+      - Migration Plan: PLAN.md
+      - Release Notes 0.1.0: releases/v0.1.0.md
+      - Release Notes 0.1.1: releases/v0.1.1.md
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
