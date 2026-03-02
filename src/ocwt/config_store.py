@@ -21,6 +21,14 @@ class OcwtConfig:
     symlink_env: bool
 
     def to_json_dict(self) -> dict[str, object]:
+        """Provide a stable serialization view for persistence operations.
+
+        Args:
+            None.
+
+        Returns:
+            A plain dictionary representation ready for JSON encoding.
+        """
         return asdict(self)
 
 
@@ -50,10 +58,26 @@ OPTIONAL_PATH_KEYS = {"prompt_file", "branch_prompt_file"}
 
 
 def config_path() -> Path:
+    """Resolve the canonical config file path.
+
+    Args:
+        None.
+
+    Returns:
+        Absolute path for ``ocwt`` user configuration storage.
+    """
     return Path.home() / ".config" / "ocwt" / "config.json"
 
 
 def default_config() -> OcwtConfig:
+    """Define baseline behavior when no user config exists.
+
+    Args:
+        None.
+
+    Returns:
+        Fully populated configuration with safe defaults.
+    """
     default_editor = "cursor" if shutil.which("cursor") else "none"
     return OcwtConfig(
         editor=default_editor,
@@ -71,24 +95,59 @@ def default_config() -> OcwtConfig:
 
 
 def _require_bool(key: str, value: object) -> bool:
+    """Validate boolean config fields with key-aware errors.
+
+    Args:
+        key: Config key being validated.
+        value: Untrusted value loaded from user input or disk.
+
+    Returns:
+        Parsed boolean value when validation succeeds.
+    """
     if isinstance(value, bool):
         return value
     raise ValueError(f"{key} must be a boolean")
 
 
 def _require_str(key: str, value: object) -> str:
+    """Validate required string config fields.
+
+    Args:
+        key: Config key being validated.
+        value: Untrusted value loaded from user input or disk.
+
+    Returns:
+        Trimmed non-empty string for persisted config use.
+    """
     if isinstance(value, str) and value.strip():
         return value.strip()
     raise ValueError(f"{key} must be a non-empty string")
 
 
 def _optional_str(key: str, value: object) -> str | None:
+    """Validate nullable string fields while preserving explicit nulls.
+
+    Args:
+        key: Config key being validated.
+        value: Untrusted value loaded from user input or disk.
+
+    Returns:
+        ``None`` for null values, otherwise a validated string.
+    """
     if value is None:
         return None
     return _require_str(key, value)
 
 
 def normalize_bool_text(raw: str) -> bool:
+    """Map CLI-friendly boolean text to strict boolean values.
+
+    Args:
+        raw: User-provided boolean text.
+
+    Returns:
+        Parsed boolean value accepted by config validation.
+    """
     normalized = raw.strip().lower()
     if normalized in {"1", "true", "yes", "on"}:
         return True
@@ -98,6 +157,15 @@ def normalize_bool_text(raw: str) -> bool:
 
 
 def parse_value_for_key(key: str, raw_value: str) -> object:
+    """Parse a string CLI value into the expected config value type.
+
+    Args:
+        key: Config key being set.
+        raw_value: Raw text provided through the CLI.
+
+    Returns:
+        Parsed scalar value compatible with config validation.
+    """
     if key in BOOL_KEYS:
         return normalize_bool_text(raw_value)
 
@@ -111,6 +179,14 @@ def parse_value_for_key(key: str, raw_value: str) -> object:
 
 
 def validate_config(data: dict[str, object]) -> OcwtConfig:
+    """Normalize and validate persisted config payloads.
+
+    Args:
+        data: Partial or full config payload loaded from disk.
+
+    Returns:
+        Validated ``OcwtConfig`` instance with defaults applied.
+    """
     defaults = default_config().to_json_dict()
     merged: dict[str, object] = {**defaults, **data}
 
@@ -135,6 +211,14 @@ def validate_config(data: dict[str, object]) -> OcwtConfig:
 
 
 def load_config() -> OcwtConfig:
+    """Load user config while keeping invalid states explicit.
+
+    Args:
+        None.
+
+    Returns:
+        Effective configuration for runtime command behavior.
+    """
     path = config_path()
     if not path.exists():
         return default_config()
@@ -151,6 +235,14 @@ def load_config() -> OcwtConfig:
 
 
 def save_config(config: OcwtConfig) -> Path:
+    """Persist config updates atomically to the canonical path.
+
+    Args:
+        config: Validated configuration object to persist.
+
+    Returns:
+        Path where config was written, used for user feedback.
+    """
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -160,6 +252,16 @@ def save_config(config: OcwtConfig) -> Path:
 
 
 def set_config_value(config: OcwtConfig, key: str, value: object) -> OcwtConfig:
+    """Apply a single key update through full-schema validation.
+
+    Args:
+        config: Existing validated config.
+        key: Config key to change.
+        value: Parsed value to store.
+
+    Returns:
+        Updated validated config object.
+    """
     if key not in VALID_CONFIG_KEYS:
         raise ValueError(f"Unknown config key: {key}")
     data = config.to_json_dict()
@@ -168,6 +270,15 @@ def set_config_value(config: OcwtConfig, key: str, value: object) -> OcwtConfig:
 
 
 def reset_config_key(config: OcwtConfig, key: str) -> OcwtConfig:
+    """Reset one config key back to its default value.
+
+    Args:
+        config: Existing validated config.
+        key: Config key to reset.
+
+    Returns:
+        Updated validated config object with that key restored.
+    """
     if key not in VALID_CONFIG_KEYS:
         raise ValueError(f"Unknown config key: {key}")
     data = config.to_json_dict()

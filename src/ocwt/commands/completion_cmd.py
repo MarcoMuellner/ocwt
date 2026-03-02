@@ -11,6 +11,14 @@ from ocwt.git_ops import (
 
 
 def _completion_script() -> str:
+    """Return the portable bash-compatible completion script.
+
+    Args:
+        None.
+
+    Returns:
+        Completion script text that supports bash and zsh+bashcompinit.
+    """
     return """_ocwt_complete() {
   local cur prev cmd branches
   local path_cur f prefix
@@ -86,6 +94,14 @@ complete -o bashdefault -o default -F _ocwt_complete octw
 
 
 def completion_worktree_branches() -> list[str]:
+    """List branch candidates that are safe to offer for ``close`` completion.
+
+    Args:
+        None.
+
+    Returns:
+        Non-protected worktree branch names for completion output.
+    """
     git_root = get_current_git_root()
     if git_root is None:
         return []
@@ -102,12 +118,28 @@ def completion_worktree_branches() -> list[str]:
 
 
 def run_complete_worktrees() -> int:
+    """Print completion candidates for worktree-backed branches.
+
+    Args:
+        None.
+
+    Returns:
+        Process-style exit code for CLI dispatch.
+    """
     for branch in completion_worktree_branches():
         typer.echo(branch)
     return 0
 
 
 def run_completion(shell: str) -> int:
+    """Print shell completion script for supported shells.
+
+    Args:
+        shell: Shell identifier requested by the user.
+
+    Returns:
+        Process-style exit code for CLI dispatch.
+    """
     normalized = shell.strip().lower()
     if normalized not in {"bash", "zsh"}:
         raise typer.BadParameter("shell must be one of: bash, zsh")

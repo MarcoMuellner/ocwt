@@ -19,10 +19,28 @@ from ocwt.git_ops import (
 
 
 def _is_protected_branch(branch: str, base: str) -> bool:
+    """Guard base branches from destructive close operations.
+
+    Args:
+        branch: Candidate branch requested for closure.
+        base: Repository base branch resolved at runtime.
+
+    Returns:
+        ``True`` when the branch must be protected from deletion.
+    """
     return branch in {"main", "master", base}
 
 
 def _choose_closure_branch(repo_root: Path, base: str) -> str | None:
+    """Collect and interactively select a closeable worktree branch.
+
+    Args:
+        repo_root: Repository root used for worktree enumeration.
+        base: Repository base branch resolved at runtime.
+
+    Returns:
+        Selected branch name or ``None`` when selection cannot be completed.
+    """
     candidates = [
         branch
         for branch, _path in list_worktree_branches(repo_root)
@@ -53,6 +71,14 @@ def _choose_closure_branch(repo_root: Path, base: str) -> str | None:
 
 
 def run_close(branch_or_path: str | None) -> int:
+    """Remove a linked worktree and delete its local branch.
+
+    Args:
+        branch_or_path: Optional branch name or worktree path selector.
+
+    Returns:
+        Process-style exit code for CLI dispatch.
+    """
     current_git_root = get_current_git_root()
     if current_git_root is None:
         typer.echo("Not inside a git repository.", err=True)

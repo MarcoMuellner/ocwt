@@ -8,16 +8,41 @@ from ocwt.git_ops import run_git
 
 
 def _timestamp() -> str:
+    """Generate a filesystem-safe timestamp for local backups.
+
+    Args:
+        None.
+
+    Returns:
+        A compact wall-clock timestamp used in backup suffixes.
+    """
     return datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
 def _backup_existing(path: Path) -> Path:
+    """Preserve existing worktree files before replacing them with symlinks.
+
+    Args:
+        path: Existing file or symlink that must be moved aside.
+
+    Returns:
+        Backup path used for user-visible recovery messaging.
+    """
     backup = Path(f"{path}.local-{_timestamp()}")
     shutil.move(str(path), str(backup))
     return backup
 
 
 def _symlink_points_to(path: Path, target: Path) -> bool:
+    """Check whether a symlink already targets the expected location.
+
+    Args:
+        path: Candidate symlink path.
+        target: Desired destination path.
+
+    Returns:
+        ``True`` when ``path`` is a symlink that resolves to ``target``.
+    """
     if not path.is_symlink():
         return False
     try:
@@ -27,6 +52,15 @@ def _symlink_points_to(path: Path, target: Path) -> bool:
 
 
 def ensure_opencode_symlink(repo_root: Path, worktree_dir: Path) -> list[str]:
+    """Enforce shared ``.opencode`` state across linked worktrees.
+
+    Args:
+        repo_root: Primary repository root containing canonical state.
+        worktree_dir: Target linked worktree.
+
+    Returns:
+        User-facing messages that explain promotions or backups performed.
+    """
     messages: list[str] = []
     if worktree_dir.resolve() == repo_root.resolve():
         return messages
@@ -60,6 +94,15 @@ def ensure_opencode_symlink(repo_root: Path, worktree_dir: Path) -> list[str]:
 
 
 def ensure_idea_symlink(repo_root: Path, worktree_dir: Path) -> list[str]:
+    """Mirror the main ``.idea`` directory into linked worktrees when present.
+
+    Args:
+        repo_root: Primary repository root containing canonical IDE metadata.
+        worktree_dir: Target linked worktree.
+
+    Returns:
+        User-facing messages that explain backups performed.
+    """
     messages: list[str] = []
     if worktree_dir.resolve() == repo_root.resolve():
         return messages
@@ -85,6 +128,15 @@ def ensure_idea_symlink(repo_root: Path, worktree_dir: Path) -> list[str]:
 
 
 def ensure_env_symlinks(repo_root: Path, worktree_dir: Path) -> list[str]:
+    """Share untracked root ``.env`` files with linked worktrees.
+
+    Args:
+        repo_root: Primary repository root where source env files live.
+        worktree_dir: Target linked worktree.
+
+    Returns:
+        User-facing messages that explain backups performed before relinking.
+    """
     messages: list[str] = []
     if worktree_dir.resolve() == repo_root.resolve():
         return messages

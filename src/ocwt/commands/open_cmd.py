@@ -37,6 +37,14 @@ SESSION_ID_RE = re.compile(r"^ses_[a-zA-Z0-9]+$")
 
 
 def complete_at_files(incomplete: str) -> list[str]:
+    """Offer ``@file`` completion candidates for intent arguments.
+
+    Args:
+        incomplete: Current token fragment being completed.
+
+    Returns:
+        Candidate paths prefixed with ``@`` when file completion is active.
+    """
     if not incomplete.startswith("@"):
         return []
 
@@ -58,6 +66,15 @@ def complete_at_files(incomplete: str) -> list[str]:
 
 
 def _extract_mentions(build_input: str, cli_mentions: tuple[str, ...]) -> list[str]:
+    """Collect explicit file mentions from CLI args or inline intent text.
+
+    Args:
+        build_input: Raw open intent string.
+        cli_mentions: Parsed positional mention tokens.
+
+    Returns:
+        Normalized mention tokens without leading ``@`` and trailing punctuation.
+    """
     mentions: list[str] = []
 
     for token in cli_mentions:
@@ -80,6 +97,14 @@ def _extract_mentions(build_input: str, cli_mentions: tuple[str, ...]) -> list[s
 
 
 def _resolve_direct_file_input(build_input: str) -> Path | None:
+    """Detect when the primary open argument is a direct file path.
+
+    Args:
+        build_input: User-provided open argument.
+
+    Returns:
+        Absolute file path when input resolves to an existing file, otherwise ``None``.
+    """
     candidate = Path(build_input).expanduser()
     if candidate.is_file():
         return candidate.resolve()
@@ -87,6 +112,14 @@ def _resolve_direct_file_input(build_input: str) -> Path | None:
 
 
 def _file_context_slug(file_path: Path) -> str:
+    """Derive branch-safe context from file parent and stem.
+
+    Args:
+        file_path: Context file used to seed branch naming.
+
+    Returns:
+        Hyphenated slug preserving key identifiers from path context.
+    """
     parent_name = file_path.parent.name.strip()
     stem = file_path.stem.strip()
 
@@ -100,6 +133,15 @@ def _file_context_slug(file_path: Path) -> str:
 
 
 def _ensure_branch_has_file_slug(branch: str, file_slug: str) -> str:
+    """Append file context to semantic branches when missing.
+
+    Args:
+        branch: Semantic branch candidate.
+        file_slug: File-derived context slug.
+
+    Returns:
+        Updated branch when suffix can be safely enriched.
+    """
     normalized_slug = sanitize_branch(file_slug).replace("/", "-").strip("-")
     if not normalized_slug:
         return branch
@@ -117,6 +159,14 @@ def _ensure_branch_has_file_slug(branch: str, file_slug: str) -> str:
 
 
 def _build_branch_prompt(build_desc: str) -> str:
+    """Build a constrained prompt for semantic branch generation.
+
+    Args:
+        build_desc: User intent enriched with attached file context.
+
+    Returns:
+        Prompt text that steers ``opencode`` toward valid branch output.
+    """
     return (
         "You are generating a git branch name.\n\n"
         "Rules:\n"
@@ -137,6 +187,17 @@ def _generate_branch_name(
     fallback_seed: str,
     agent: str,
 ) -> str:
+    """Ask ``opencode`` for a semantic branch and validate the result.
+
+    Args:
+        build_desc: Intent text sent to ``opencode``.
+        attached_files: Files attached as context for branch inference.
+        fallback_seed: Deterministic seed used when model output is invalid.
+        agent: Agent name used for generation.
+
+    Returns:
+        Valid semantic branch name, or deterministic fallback when needed.
+    """
     file_args: list[str] = []
     for file_path in attached_files:
         file_args.extend(["--file", str(file_path)])
@@ -163,6 +224,14 @@ def _generate_branch_name(
 
 
 def _find_session_id(value: object) -> str | None:
+    """Extract an ``opencode`` session id from nested JSON events.
+
+    Args:
+        value: Parsed JSON event object or collection.
+
+    Returns:
+        Session id when present in supported event shapes, else ``None``.
+    """
     if isinstance(value, dict):
         for key in ("session_id", "sessionId", "sessionID"):
             for key_obj, candidate in value.items():
@@ -223,6 +292,14 @@ def _find_session_id(value: object) -> str | None:
 
 
 def _summarize_plan_event(payload: object) -> str | None:
+    """Convert raw planning events into concise status text.
+
+    Args:
+        payload: Parsed planning event payload.
+
+    Returns:
+        Human-readable status text for live terminal updates, or ``None``.
+    """
     if not isinstance(payload, dict):
         return None
 
@@ -280,6 +357,15 @@ def _summarize_plan_event(payload: object) -> str | None:
 
 
 def _print_live_status(text: str, *, final: bool = False) -> None:
+    """Render a single-line live status update in the terminal.
+
+    Args:
+        text: Status text to display.
+        final: Whether to finalize output with a newline.
+
+    Returns:
+        None.
+    """
     width = shutil.get_terminal_size(fallback=(100, 20)).columns
     max_len = max(10, width - 2)
     display = text if len(text) <= max_len else f"{text[: max_len - 1]}..."
@@ -295,6 +381,17 @@ def _plan_and_launch(
     attached_files: list[Path],
     agent: str,
 ) -> int:
+    """Run one-shot planning then continue in an interactive session.
+
+    Args:
+        worktree_dir: Working directory for planning and follow-up session.
+        build_desc: Planning request text.
+        attached_files: Context files to attach to planning request.
+        agent: Planning agent identifier.
+
+    Returns:
+        Process-style exit code from interactive ``opencode`` continuation.
+    """
     typer.echo()
     typer.echo("==============================")
     typer.echo("  Planning session started")
@@ -372,11 +469,27 @@ def _plan_and_launch(
 
 
 def _launch_opencode(worktree_dir: Path) -> int:
+    """Launch interactive ``opencode`` in a worktree directory.
+
+    Args:
+        worktree_dir: Target working directory for interactive session.
+
+    Returns:
+        Process-style exit code from ``opencode``.
+    """
     proc = subprocess.run(["opencode", "."], cwd=worktree_dir, check=False)
     return int(proc.returncode)
 
 
 def _load_runtime_config() -> OcwtConfig | None:
+    """Load config with user-facing error handling for CLI flows.
+
+    Args:
+        None.
+
+    Returns:
+        Parsed config object or ``None`` when config is invalid.
+    """
     try:
         return load_config()
     except ValueError as exc:
@@ -385,6 +498,15 @@ def _load_runtime_config() -> OcwtConfig | None:
 
 
 def _ensure_repo_symlinks(repo_root: Path, worktree_dir: Path) -> bool:
+    """Apply configured symlink policies for a linked worktree.
+
+    Args:
+        repo_root: Primary repository root.
+        worktree_dir: Linked worktree that should inherit shared files.
+
+    Returns:
+        ``True`` when symlink setup succeeds.
+    """
     config = _load_runtime_config()
     if config is None:
         return False
@@ -412,12 +534,33 @@ def _open_session(
     plan_mode: bool,
     agent: str,
 ) -> int:
+    """Dispatch to planning or direct interactive mode.
+
+    Args:
+        worktree_dir: Target worktree directory.
+        build_desc: Intent text used in planning mode.
+        attached_files: Context files used in planning mode.
+        plan_mode: Whether planning mode is enabled.
+        agent: Agent identifier for planning or interactive handoff.
+
+    Returns:
+        Process-style exit code from the selected session flow.
+    """
     if plan_mode:
         return _plan_and_launch(worktree_dir, build_desc, attached_files, agent)
     return _launch_opencode(worktree_dir)
 
 
 def _resolve_editor_behavior(options: OpenOptions, config: OcwtConfig) -> tuple[str | None, bool]:
+    """Resolve effective editor command and launch policy for one invocation.
+
+    Args:
+        options: Per-command overrides from CLI flags.
+        config: Persisted config defaults.
+
+    Returns:
+        Tuple of ``(editor_command, should_open)``.
+    """
     if options.editor is not None:
         raw = options.editor.strip()
         if raw.lower() == "none" or not raw:
@@ -431,6 +574,16 @@ def _resolve_editor_behavior(options: OpenOptions, config: OcwtConfig) -> tuple[
 
 
 def _launch_editor_if_enabled(worktree_dir: Path, editor: str | None, should_open: bool) -> None:
+    """Start editor process when launch policy is enabled.
+
+    Args:
+        worktree_dir: Worktree path opened in the editor.
+        editor: Effective editor command.
+        should_open: Whether editor launch is enabled for this invocation.
+
+    Returns:
+        None.
+    """
     if not should_open or editor is None:
         return
 
@@ -445,6 +598,15 @@ def _launch_editor_if_enabled(worktree_dir: Path, editor: str | None, should_ope
 
 
 def _pull_repo_if_enabled(repo_root: Path, auto_pull: bool) -> bool:
+    """Run a fast-forward pull gate before creating new worktrees.
+
+    Args:
+        repo_root: Repository root where pull should execute.
+        auto_pull: Whether pull gate is enabled.
+
+    Returns:
+        ``True`` when pull gate passes or is disabled.
+    """
     if not auto_pull:
         return True
 
@@ -459,6 +621,14 @@ def _pull_repo_if_enabled(repo_root: Path, auto_pull: bool) -> bool:
 
 
 def run_open(options: OpenOptions) -> int:
+    """Open an existing worktree or create one from intent.
+
+    Args:
+        options: Parsed open command options.
+
+    Returns:
+        Process-style exit code for CLI dispatch.
+    """
     if shutil.which("opencode") is None:
         typer.echo("opencode not found in PATH.", err=True)
         return 1

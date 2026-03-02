@@ -49,6 +49,18 @@ def open_command(
         typer.Option("--editor", help="Editor command override, or 'none'"),
     ] = None,
 ) -> None:
+    """Open or create a worktree from intent, branch, or attached files.
+
+    Args:
+        intent_or_branch: Build intent text or direct branch selector.
+        at_files: Optional file mentions used as planning/build context.
+        plan: Whether planning mode should run before interactive session start.
+        agent: Optional agent override for planning or branch generation.
+        editor: Optional editor override for this invocation.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
     normalized_at_files = tuple(at_files or [])
     exit_code = run_open(
         OpenOptions(
@@ -69,6 +81,14 @@ def close_command(
         str | None, typer.Argument(help="Branch name or worktree path")
     ] = None,
 ) -> None:
+    """Close a branch worktree and delete its local branch.
+
+    Args:
+        branch_or_path: Optional branch name or worktree path.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
     exit_code = run_close(branch_or_path)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
@@ -78,6 +98,14 @@ def close_command(
 def completion_command(
     shell: Annotated[str, typer.Argument(help="Shell name: bash or zsh")],
 ) -> None:
+    """Print completion script content for supported shells.
+
+    Args:
+        shell: Target shell name.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
     exit_code = run_completion(shell)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
@@ -85,6 +113,14 @@ def completion_command(
 
 @config_app.command("show")
 def config_show_command() -> None:
+    """Print the full effective config payload.
+
+    Args:
+        None.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
     exit_code = run_config_show()
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
@@ -92,6 +128,14 @@ def config_show_command() -> None:
 
 @config_app.command("get")
 def config_get_command(key: Annotated[str, typer.Argument(help="Config key")]) -> None:
+    """Print a single config value.
+
+    Args:
+        key: Config key to read.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
     exit_code = run_config_get(key)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
@@ -102,6 +146,15 @@ def config_set_command(
     key: Annotated[str, typer.Argument(help="Config key")],
     value: Annotated[str, typer.Argument(help="Config value")],
 ) -> None:
+    """Persist one config key override.
+
+    Args:
+        key: Config key to change.
+        value: Raw value string from CLI input.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
     exit_code = run_config_set(key, value)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
@@ -111,6 +164,14 @@ def config_set_command(
 def config_reset_command(
     key: Annotated[str | None, typer.Argument(help="Config key to reset")] = None,
 ) -> None:
+    """Reset one key or all config keys to defaults.
+
+    Args:
+        key: Optional key name; omitted means reset all.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
     exit_code = run_config_reset(key)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
@@ -120,6 +181,14 @@ def config_reset_command(
 def config_editor_command(
     value: Annotated[str, typer.Argument(help="Editor executable or none")],
 ) -> None:
+    """Set default editor command for open flows.
+
+    Args:
+        value: Editor executable or ``none``.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
     exit_code = run_config_editor(value)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
@@ -129,6 +198,14 @@ def config_editor_command(
 def config_agent_command(
     value: Annotated[str, typer.Argument(help="Default OpenCode agent")],
 ) -> None:
+    """Set default non-planning agent.
+
+    Args:
+        value: Agent identifier.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
     exit_code = run_config_agent(value)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
@@ -138,6 +215,14 @@ def config_agent_command(
 def config_prompt_file_command(
     value: Annotated[str, typer.Argument(help="Path or default")],
 ) -> None:
+    """Set or clear the main prompt file override.
+
+    Args:
+        value: Path value or ``default``.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
     exit_code = run_config_prompt_file(value)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
@@ -147,6 +232,14 @@ def config_prompt_file_command(
 def config_branch_prompt_file_command(
     value: Annotated[str, typer.Argument(help="Path or default")],
 ) -> None:
+    """Set or clear the branch prompt file override.
+
+    Args:
+        value: Path value or ``default``.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
     exit_code = run_config_branch_prompt_file(value)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
@@ -156,6 +249,14 @@ def config_branch_prompt_file_command(
 def config_worktree_parent_command(
     value: Annotated[str, typer.Argument(help="Parent folder name")],
 ) -> None:
+    """Set parent folder name used for linked worktree directories.
+
+    Args:
+        value: Parent directory name.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
     exit_code = run_config_worktree_parent(value)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
@@ -163,6 +264,14 @@ def config_worktree_parent_command(
 
 @config_app.command("auto-plan")
 def config_auto_plan_command(value: Annotated[str, typer.Argument(help="true or false")]) -> None:
+    """Toggle automatic planning mode.
+
+    Args:
+        value: Boolean text value.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
     exit_code = run_config_auto_plan(value)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
@@ -170,6 +279,14 @@ def config_auto_plan_command(value: Annotated[str, typer.Argument(help="true or 
 
 @config_app.command("auto-pull")
 def config_auto_pull_command(value: Annotated[str, typer.Argument(help="true or false")]) -> None:
+    """Toggle automatic repository pull before worktree creation.
+
+    Args:
+        value: Boolean text value.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
     exit_code = run_config_auto_pull(value)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
@@ -177,6 +294,14 @@ def config_auto_pull_command(value: Annotated[str, typer.Argument(help="true or 
 
 @config_app.command("open-editor")
 def config_open_editor_command(value: Annotated[str, typer.Argument(help="true or false")]) -> None:
+    """Toggle automatic editor launch during ``open``.
+
+    Args:
+        value: Boolean text value.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
     exit_code = run_config_open_editor(value)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
@@ -184,11 +309,27 @@ def config_open_editor_command(value: Annotated[str, typer.Argument(help="true o
 
 @app.command("__complete_worktrees", hidden=True)
 def complete_worktrees_command() -> None:
+    """Emit internal close-completion branch candidates.
+
+    Args:
+        None.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
     exit_code = run_complete_worktrees()
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
 
 
 def run() -> int:
+    """Launch the Typer application entrypoint.
+
+    Args:
+        None.
+
+    Returns:
+        Process-style exit code for script entrypoints.
+    """
     app()
     return 0
