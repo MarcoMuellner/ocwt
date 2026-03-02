@@ -19,6 +19,8 @@ ocwt = "ocwt.__main__:main"
 
 [dependency-groups]
 dev = [
+  "mkdocs>=1.6.0",
+  "mkdocs-material>=9.6.0",
   "pytest>=8.3.5",
   "ruff>=0.11.0",
   "ty>=0.0.18",
