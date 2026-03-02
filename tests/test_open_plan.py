@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from ocwt.commands.open_cmd import _find_session_id, _generate_branch_name, _plan_and_launch
+from ocwt.commands.open_cmd import (
+    _find_session_id,
+    _generate_branch_name,
+    _plan_and_launch,
+    _summarize_plan_event,
+)
 
 
 def test_find_session_id_from_nested_payload() -> None:
@@ -29,6 +34,30 @@ def test_find_session_id_ignores_non_id_session_string() -> None:
     payload = {"event": "session.created", "session": "created", "id": "not_a_session_id"}
 
     assert _find_session_id(payload) is None
+
+
+def test_find_session_id_supports_session_id_upper_d() -> None:
+    payload = {"type": "step_start", "sessionID": "ses_ABC123"}
+
+    assert _find_session_id(payload) == "ses_ABC123"
+
+
+def test_summarize_plan_event_tool_use() -> None:
+    payload = {
+        "type": "tool_use",
+        "part": {
+            "tool": "read",
+            "state": {
+                "input": {
+                    "filePath": "/tmp/some/file.md",
+                }
+            },
+        },
+    }
+
+    summary = _summarize_plan_event(payload)
+
+    assert summary == "Planning: read -> /tmp/some/file.md"
 
 
 def test_generate_branch_name_uses_separator_before_prompt(monkeypatch: pytest.MonkeyPatch) -> None:

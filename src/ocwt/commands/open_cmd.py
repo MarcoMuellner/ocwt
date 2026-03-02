@@ -4,6 +4,7 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -163,7 +164,7 @@ def _generate_branch_name(
 
 def _find_session_id(value: object) -> str | None:
     if isinstance(value, dict):
-        for key in ("session_id", "sessionId"):
+        for key in ("session_id", "sessionId", "sessionID"):
             for key_obj, candidate in value.items():
                 if key_obj == key and isinstance(candidate, str) and SESSION_ID_RE.match(candidate):
                     return candidate
@@ -221,13 +222,83 @@ def _find_session_id(value: object) -> str | None:
     return None
 
 
+def _summarize_plan_event(payload: object) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+
+    event_type_obj: object | None = None
+    for key_obj, candidate in payload.items():
+        if key_obj == "type":
+            event_type_obj = candidate
+            break
+    event_type = event_type_obj if isinstance(event_type_obj, str) else ""
+
+    if event_type == "step_start":
+        return "Planning: analyzing context"
+
+    if event_type == "step_finish":
+        return "Planning: reasoning over collected data"
+
+    if event_type == "tool_use":
+        part_obj: object | None = None
+        for key_obj, candidate in payload.items():
+            if key_obj == "part":
+                part_obj = candidate
+                break
+        if not isinstance(part_obj, dict):
+            return "Planning: using tool"
+
+        tool_obj: object | None = None
+        state_obj: object | None = None
+        for key_obj, candidate in part_obj.items():
+            if key_obj == "tool":
+                tool_obj = candidate
+            elif key_obj == "state":
+                state_obj = candidate
+        tool = tool_obj if isinstance(tool_obj, str) else "tool"
+
+        if not isinstance(state_obj, dict):
+            return f"Planning: {tool}"
+
+        input_obj: object | None = None
+        for key_obj, candidate in state_obj.items():
+            if key_obj == "input":
+                input_obj = candidate
+                break
+        if isinstance(input_obj, dict):
+            for key in ("filePath", "pattern", "path"):
+                for key_obj, value in input_obj.items():
+                    if key_obj == key and isinstance(value, str) and value.strip():
+                        short = value.strip()
+                        if len(short) > 56:
+                            short = f"...{short[-53:]}"
+                        return f"Planning: {tool} -> {short}"
+
+        return f"Planning: {tool}"
+
+    return None
+
+
+def _print_live_status(text: str, *, final: bool = False) -> None:
+    width = shutil.get_terminal_size(fallback=(100, 20)).columns
+    max_len = max(10, width - 2)
+    display = text if len(text) <= max_len else f"{text[: max_len - 1]}..."
+    sys.stdout.write(f"\r{display.ljust(max_len)}")
+    if final:
+        sys.stdout.write("\n")
+    sys.stdout.flush()
+
+
 def _plan_and_launch(
     worktree_dir: Path,
     build_desc: str,
     attached_files: list[Path],
     agent: str,
 ) -> int:
-    typer.echo("Planning started...")
+    typer.echo()
+    typer.echo("==============================")
+    typer.echo("  Planning session started")
+    typer.echo("==============================")
 
     file_args: list[str] = []
     for file_path in attached_files:
@@ -252,21 +323,32 @@ def _plan_and_launch(
         text=True,
     )
 
+    last_status = "Planning: initializing"
+    _print_live_status(last_status)
+
     assert proc.stdout is not None
     for line in proc.stdout:
         stripped = line.rstrip("\n")
-        typer.echo(stripped)
         if not stripped:
             continue
         try:
             payload = json.loads(stripped)
         except json.JSONDecodeError:
+            last_status = f"Planning: {stripped}"
+            _print_live_status(last_status)
             continue
+
+        summary = _summarize_plan_event(payload)
+        if summary:
+            last_status = summary
+            _print_live_status(last_status)
+
         discovered = _find_session_id(payload)
         if discovered:
             session_id = discovered
 
     returncode = proc.wait()
+    _print_live_status(last_status, final=True)
     if returncode != 0:
         typer.echo("Planning step failed.", err=True)
         return int(returncode)
