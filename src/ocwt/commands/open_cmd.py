@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -26,8 +28,11 @@ class OpenOptions:
     intent_or_branch: str | None
     at_files: tuple[str, ...]
     plan: bool
-    agent: str
+    agent: str | None
     editor: str | None
+
+
+SESSION_ID_RE = re.compile(r"^ses_[a-zA-Z0-9]+$")
 
 
 def complete_at_files(incomplete: str) -> list[str]:
@@ -116,6 +121,124 @@ def _generate_branch_name(
     return fallback_branch(fallback_seed)
 
 
+def _find_session_id(value: object) -> str | None:
+    if isinstance(value, dict):
+        for key in ("session_id", "sessionId"):
+            for key_obj, candidate in value.items():
+                if key_obj == key and isinstance(candidate, str) and SESSION_ID_RE.match(candidate):
+                    return candidate
+
+        for key_obj, candidate in value.items():
+            if (
+                key_obj == "session"
+                and isinstance(candidate, str)
+                and SESSION_ID_RE.match(candidate)
+            ):
+                return candidate
+
+        session_obj: object | None = None
+        for key_obj, candidate in value.items():
+            if key_obj == "session":
+                session_obj = candidate
+                break
+
+        if isinstance(session_obj, dict):
+            for key_obj, candidate in session_obj.items():
+                if (
+                    key_obj == "id"
+                    and isinstance(candidate, str)
+                    and SESSION_ID_RE.match(candidate)
+                ):
+                    return candidate
+
+        event_obj: object | None = None
+        id_obj: object | None = None
+        for key_obj, candidate in value.items():
+            if event_obj is None and key_obj in {"type", "event"}:
+                event_obj = candidate
+            elif key_obj == "id" and id_obj is None:
+                id_obj = candidate
+
+        if (
+            isinstance(event_obj, str)
+            and "session" in event_obj.lower()
+            and isinstance(id_obj, str)
+            and SESSION_ID_RE.match(id_obj)
+        ):
+            return id_obj
+
+        for nested in value.values():
+            nested_id = _find_session_id(nested)
+            if nested_id:
+                return nested_id
+        return None
+
+    if isinstance(value, list):
+        for nested in value:
+            nested_id = _find_session_id(nested)
+            if nested_id:
+                return nested_id
+    return None
+
+
+def _plan_and_launch(
+    worktree_dir: Path,
+    build_desc: str,
+    attached_files: list[Path],
+    agent: str,
+) -> int:
+    typer.echo("Planning started...")
+
+    file_args: list[str] = []
+    for file_path in attached_files:
+        file_args.extend(["--file", str(file_path)])
+
+    session_id: str | None = None
+    proc = subprocess.Popen(
+        ["opencode", "run", "--agent", agent, "--format", "json", *file_args, build_desc],
+        cwd=worktree_dir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        stripped = line.rstrip("\n")
+        typer.echo(stripped)
+        if not stripped:
+            continue
+        try:
+            payload = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        discovered = _find_session_id(payload)
+        if discovered:
+            session_id = discovered
+
+    returncode = proc.wait()
+    if returncode != 0:
+        typer.echo("Planning step failed.", err=True)
+        return int(returncode)
+
+    if session_id:
+        interactive = subprocess.run(
+            ["opencode", "--session", session_id, str(worktree_dir), "--agent", agent],
+            check=False,
+        )
+        return int(interactive.returncode)
+
+    typer.echo(
+        "Warning: could not parse planning session id; falling back to `opencode --continue`.",
+        err=True,
+    )
+    interactive = subprocess.run(
+        ["opencode", "--continue", str(worktree_dir), "--agent", agent],
+        check=False,
+    )
+    return int(interactive.returncode)
+
+
 def _launch_opencode(worktree_dir: Path) -> int:
     proc = subprocess.run(["opencode", "."], cwd=worktree_dir, check=False)
     return int(proc.returncode)
@@ -150,6 +273,45 @@ def _ensure_repo_symlinks(repo_root: Path, worktree_dir: Path) -> bool:
     return True
 
 
+def _open_session(
+    worktree_dir: Path,
+    build_desc: str,
+    attached_files: list[Path],
+    plan_mode: bool,
+    agent: str,
+) -> int:
+    if plan_mode:
+        return _plan_and_launch(worktree_dir, build_desc, attached_files, agent)
+    return _launch_opencode(worktree_dir)
+
+
+def _resolve_editor_behavior(options: OpenOptions, config: OcwtConfig) -> tuple[str | None, bool]:
+    if options.editor is not None:
+        raw = options.editor.strip()
+        if raw.lower() == "none" or not raw:
+            return (None, False)
+        return (raw, True)
+
+    editor = config.editor.strip()
+    if editor.lower() == "none" or not editor:
+        return (None, False)
+    return (editor, config.open_editor)
+
+
+def _launch_editor_if_enabled(worktree_dir: Path, editor: str | None, should_open: bool) -> None:
+    if not should_open or editor is None:
+        return
+
+    if "/" not in editor and shutil.which(editor) is None:
+        typer.echo(f"Warning: editor not found in PATH: {editor}", err=True)
+        return
+
+    try:
+        subprocess.Popen([editor, str(worktree_dir)], cwd=worktree_dir)
+    except OSError as exc:
+        typer.echo(f"Warning: failed to launch editor '{editor}': {exc}", err=True)
+
+
 def run_open(options: OpenOptions) -> int:
     if shutil.which("opencode") is None:
         typer.echo("opencode not found in PATH.", err=True)
@@ -171,6 +333,9 @@ def run_open(options: OpenOptions) -> int:
     config = _load_runtime_config()
     if config is None:
         return 1
+    effective_agent = options.agent or config.agent
+    plan_mode = options.plan or config.auto_plan
+    effective_editor, should_open_editor = _resolve_editor_behavior(options, config)
     mentions = _extract_mentions(build_input, options.at_files)
 
     existing_direct = None if mentions else find_worktree_for_branch(repo_root, build_input)
@@ -179,7 +344,14 @@ def run_open(options: OpenOptions) -> int:
         typer.echo(f"Worktree  : {existing_direct}")
         if not _ensure_repo_symlinks(repo_root, existing_direct):
             return 1
-        return _launch_opencode(existing_direct)
+        _launch_editor_if_enabled(existing_direct, effective_editor, should_open_editor)
+        return _open_session(
+            existing_direct,
+            build_desc=build_input,
+            attached_files=[],
+            plan_mode=plan_mode,
+            agent=effective_agent,
+        )
 
     attached_files: list[Path] = []
     fallback_seed = build_input
@@ -211,7 +383,9 @@ def run_open(options: OpenOptions) -> int:
 
     if not branch:
         try:
-            branch = _generate_branch_name(build_desc, attached_files, fallback_seed, config.agent)
+            branch = _generate_branch_name(
+                build_desc, attached_files, fallback_seed, effective_agent
+            )
         except RuntimeError as exc:
             typer.echo(str(exc), err=True)
             return 1
@@ -224,7 +398,14 @@ def run_open(options: OpenOptions) -> int:
         typer.echo(f"Worktree  : {existing_worktree}")
         if not _ensure_repo_symlinks(repo_root, existing_worktree):
             return 1
-        return _launch_opencode(existing_worktree)
+        _launch_editor_if_enabled(existing_worktree, effective_editor, should_open_editor)
+        return _open_session(
+            existing_worktree,
+            build_desc=build_desc,
+            attached_files=attached_files,
+            plan_mode=plan_mode,
+            agent=effective_agent,
+        )
 
     worktree_dir = worktree_dir_for_branch(repo_root, branch, config.worktree_parent)
     worktree_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -253,4 +434,12 @@ def run_open(options: OpenOptions) -> int:
     if not _ensure_repo_symlinks(repo_root, worktree_dir):
         return 1
 
-    return _launch_opencode(worktree_dir)
+    _launch_editor_if_enabled(worktree_dir, effective_editor, should_open_editor)
+
+    return _open_session(
+        worktree_dir,
+        build_desc=build_desc,
+        attached_files=attached_files,
+        plan_mode=plan_mode,
+        agent=effective_agent,
+    )

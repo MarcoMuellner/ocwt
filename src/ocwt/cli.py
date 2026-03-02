@@ -42,7 +42,7 @@ def open_command(
         typer.Argument(help="Optional @file references.", autocompletion=complete_at_files),
     ] = None,
     plan: Annotated[bool, typer.Option("--plan", help="Enable one-shot planning mode")] = False,
-    agent: Annotated[str, typer.Option("--agent", help="OpenCode agent name")] = "build",
+    agent: Annotated[str | None, typer.Option("--agent", help="OpenCode agent name")] = None,
     editor: Annotated[
         str | None,
         typer.Option("--editor", help="Editor command override, or 'none'"),

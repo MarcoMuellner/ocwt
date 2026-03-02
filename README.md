@@ -28,6 +28,7 @@ Run the CLI:
 
 ```bash
 uv run ocwt --help
+uv run ocwt open "add config command" --plan
 ```
 
 Config:
