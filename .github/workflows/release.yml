@@ -12,6 +12,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment: pypi
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,38 +35,17 @@ jobs:
           python - <<'PY'
           import os
           import re
-          import tomllib
           from pathlib import Path
 
           tag = os.environ["RELEASE_TAG"].strip()
           pyproject = Path("pyproject.toml")
           init_file = Path("src/ocwt/__init__.py")
 
-          py_data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-          current_version = str(py_data["project"]["version"])
-
           semver_match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", tag)
-          if semver_match:
-              next_version = ".".join(semver_match.groups())
-          else:
-              bump_match = re.fullmatch(r"(?:bump-)?(major|minor|patch)", tag)
-              if not bump_match:
-                  raise SystemExit(
-                      f"Unsupported release tag '{tag}'. Use vX.Y.Z or bump-major/bump-minor/bump-patch."
-                  )
+          if not semver_match:
+              raise SystemExit(f"Unsupported release tag '{tag}'. Use semantic version tags only (vX.Y.Z).")
 
-              major, minor, patch = [int(part) for part in current_version.split(".")]
-              bump = bump_match.group(1)
-              if bump == "major":
-                  major += 1
-                  minor = 0
-                  patch = 0
-              elif bump == "minor":
-                  minor += 1
-                  patch = 0
-              else:
-                  patch += 1
-              next_version = f"{major}.{minor}.{patch}"
+          next_version = ".".join(semver_match.groups())
 
           py_text = pyproject.read_text(encoding="utf-8")
           py_text, py_count = re.subn(
