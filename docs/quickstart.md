@@ -1,9 +1,9 @@
 # Quickstart
 
-## 1) Open from intent
+## 1) Build from intent
 
 ```bash
-ocwt open "add retry queue metrics"
+ocwt build "add retry queue metrics"
 ```
 
 This creates or reuses a worktree and starts an OpenCode session there.
@@ -19,7 +19,7 @@ The file is auto-attached as context. Branch naming also includes file context.
 ## 3) Plan first
 
 ```bash
-ocwt open "improve delivery retries" --plan
+ocwt build "improve delivery retries" --plan
 ```
 
 Planning uses the `plan` agent by default, then continues interactively.
@@ -27,7 +27,7 @@ Planning uses the `plan` agent by default, then continues interactively.
 ## 4) Override auto-plan once
 
 ```bash
-ocwt open "hotfix webhook timeout" --no-plan
+ocwt build "hotfix webhook timeout" --no-plan
 ```
 
 ## 5) Close worktree

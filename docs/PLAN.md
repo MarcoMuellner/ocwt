@@ -7,7 +7,8 @@
 
 ## CLI Surface
 
-- `ocwt open [intent|branch] [@file ...] [--plan] [--agent build] [--editor <exe>|none]`
+- `ocwt open [file-path] [--plan] [--agent <name>] [--editor <exe>|none]`
+- `ocwt build [intent] [@file ...] [--plan] [--agent <name>] [--editor <exe>|none]`
 - `ocwt close [branch|worktree_path]`
 - `ocwt completion [bash|zsh]`
 - `ocwt config show`
@@ -38,7 +39,7 @@
 
 ## One-Shot Planning + Same Session Flow
 
-- `ocwt open --plan ...`:
+- `ocwt build --plan ...` (or `ocwt open <existing-file> --plan`):
   - Creates/reuses worktree.
   - Prints clear planning banner (`Planning started...`) and streams live opencode output (spinner + line stream; no silent wait).
   - Runs one-shot with `opencode run --agent build ...` (plus attached `@file`s).
@@ -58,7 +59,7 @@
 
 ## Acceptance Checks
 
-- `ocwt config editor zed` persists and is used on next `open`.
-- `ocwt open "..." --plan` shows active planning output and then lands in same opencode session.
+- `ocwt config editor zed` persists and is used on next `open`/`build`.
+- `ocwt build "..." --plan` shows active planning output and then lands in same opencode session.
 - Existing branch/worktree reopen behavior still works.
 - `close` still protects `main/master/base` and handles interactive selection safely.

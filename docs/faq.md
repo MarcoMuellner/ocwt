@@ -5,7 +5,7 @@
 Use:
 
 ```bash
-ocwt open "..." --no-plan
+ocwt build "..." --no-plan
 ```
 
 ## Does file input affect branch naming?

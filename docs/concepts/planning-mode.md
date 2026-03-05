@@ -6,16 +6,16 @@ Planning mode runs a one-shot planning pass, then continues in an interactive Op
 
 ```bash
 # per command
-ocwt open "improve retry policy" --plan
+ocwt build "improve retry policy" --plan
 
-# default for all opens
+# default for all build/open flows
 ocwt config auto-plan true
 ```
 
 ## Disable for one run
 
 ```bash
-ocwt open "small fix" --no-plan
+ocwt build "small fix" --no-plan
 ```
 
 ## Agent behavior

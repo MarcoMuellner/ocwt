@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from ocwt.commands.close_cmd import run_close
-from ocwt.commands.open_cmd import OpenOptions, run_open
+from ocwt.commands.open_cmd import OpenOptions, run_build, run_open
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -56,7 +56,7 @@ def _patch_opencode(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
     return launched_cwds
 
 
-def test_open_creates_worktree_and_reopen_reuses_it(
+def test_build_creates_worktree_and_reopen_reuses_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo_root = tmp_path / "repo"
@@ -74,8 +74,8 @@ def test_open_creates_worktree_and_reopen_reuses_it(
         editor=None,
     )
 
-    first_exit = run_open(options)
-    second_exit = run_open(options)
+    first_exit = run_build(options)
+    second_exit = run_build(options)
 
     expected_worktree = (repo_root.parent / ".worktrees" / "feat__reopen-flow").resolve()
     assert first_exit == 0
@@ -85,6 +85,27 @@ def test_open_creates_worktree_and_reopen_reuses_it(
 
     porcelain = _git(repo_root, "worktree", "list", "--porcelain")
     assert porcelain.count("branch refs/heads/feat/reopen-flow") == 1
+
+
+def test_open_requires_existing_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(repo_root)
+    _patch_opencode(monkeypatch)
+
+    options = OpenOptions(
+        intent_or_branch="pm/missing-file.md",
+        at_files=(),
+        plan=False,
+        agent=None,
+        editor=None,
+    )
+
+    exit_code = run_open(options)
+
+    assert exit_code == 1
 
 
 def test_close_removes_worktree_and_branch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

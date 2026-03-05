@@ -14,6 +14,7 @@ def test_run_completion_prints_shell_script(capsys: pytest.CaptureFixture[str]) 
     assert exit_code == 0
     assert "_ocwt_complete()" in output
     assert "complete -o bashdefault -o default -F _ocwt_complete ocwt" in output
+    assert "open build close" in output
 
 
 def test_completion_worktree_branches_filters_protected(monkeypatch: pytest.MonkeyPatch) -> None:

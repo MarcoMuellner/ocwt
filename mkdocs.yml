@@ -15,6 +15,7 @@ nav:
   - Quickstart: quickstart.md
   - Commands:
       - open: commands/open.md
+      - build: commands/build.md
       - close: commands/close.md
       - completion: commands/completion.md
       - config: commands/config.md

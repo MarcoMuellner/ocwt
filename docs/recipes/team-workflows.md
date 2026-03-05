@@ -15,10 +15,10 @@ ocwt config editor zed
 
 ```bash
 # start work
-ocwt open "implement retry queue"
+ocwt build "implement retry queue"
 
-# reopen same branch later
-ocwt open feat/implement-retry-queue
+# open from a ticket/spec file
+ocwt open pm/epic_011/ticket_003_delivery_status_mirroring_and_pruning.md
 
 # close when done
 ocwt close

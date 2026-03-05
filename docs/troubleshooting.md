@@ -7,7 +7,7 @@
 What to do:
 
 - check `opencode` availability: `opencode --version`
-- retry with explicit agent: `ocwt open "..." --agent build`
+- retry with explicit agent: `ocwt build "..." --agent build`
 - if it still fails, `ocwt` falls back to deterministic branch naming
 
 ## Planning mode shows no continuation session
@@ -26,7 +26,7 @@ What to do:
 What to do:
 
 - resolve local divergence manually
-- rerun `ocwt open ...`
+- rerun `ocwt open <existing-file>` or `ocwt build "..."`
 
 ## `ocwt close` picker not interactive
 

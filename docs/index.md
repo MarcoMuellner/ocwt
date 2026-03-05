@@ -10,13 +10,14 @@
 
 ## Core ideas
 
-- `open` creates or reuses a worktree for an intent, branch, or file.
+- `open` creates or reuses a worktree from a file.
+- `build` creates or reuses a worktree from free-form intent.
 - `close` removes the worktree and deletes the local branch safely.
 - planning mode can run first and then continue in the same session.
 
 ## Full docs
 
-- Commands: [open](commands/open.md), [close](commands/close.md), [completion](commands/completion.md), [config](commands/config.md)
+- Commands: [open](commands/open.md), [build](commands/build.md), [close](commands/close.md), [completion](commands/completion.md), [config](commands/config.md)
 - Concepts: [planning mode](concepts/planning-mode.md), [branch naming](concepts/branch-naming.md), [worktrees](concepts/worktrees.md)
 - Recipes: [open from file](recipes/from-file.md), [team workflows](recipes/team-workflows.md), [release flow](recipes/release-flow.md)
 - Support: [troubleshooting](troubleshooting.md), [faq](faq.md)

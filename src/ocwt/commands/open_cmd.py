@@ -65,6 +65,27 @@ def complete_at_files(incomplete: str) -> list[str]:
     return output
 
 
+def complete_files(incomplete: str) -> list[str]:
+    """Offer plain file and directory completion candidates.
+
+    Args:
+        incomplete: Current token fragment being completed.
+
+    Returns:
+        Matching file or directory candidates for direct path completion.
+    """
+    base = Path()
+    matches = sorted(base.glob(f"{incomplete}*"), key=lambda item: item.as_posix())
+
+    output: list[str] = []
+    for match in matches:
+        text = match.as_posix()
+        if match.is_dir() and not text.endswith("/"):
+            text = f"{text}/"
+        output.append(text)
+    return output
+
+
 def _extract_mentions(build_input: str, cli_mentions: tuple[str, ...]) -> list[str]:
     """Collect explicit file mentions from CLI args or inline intent text.
 
@@ -631,11 +652,12 @@ def _pull_repo_if_enabled(repo_root: Path, auto_pull: bool, base: str) -> bool:
     return True
 
 
-def run_open(options: OpenOptions) -> int:
-    """Open an existing worktree or create one from intent.
+def _run_open_flow(options: OpenOptions, *, require_existing_file: bool) -> int:
+    """Run shared open/build workflow with mode-specific input gating.
 
     Args:
-        options: Parsed open command options.
+        options: Parsed command options.
+        require_existing_file: Whether primary input must resolve to a real file.
 
     Returns:
         Process-style exit code for CLI dispatch.
@@ -646,9 +668,17 @@ def run_open(options: OpenOptions) -> int:
 
     build_input = trim(options.intent_or_branch or "")
     if not build_input:
-        build_input = trim(typer.prompt("What do you want to build?"))
+        if require_existing_file:
+            build_input = trim(typer.prompt("Which file should be used as context?"))
+        else:
+            build_input = trim(typer.prompt("What do you want to build?"))
     if not build_input:
         typer.echo("No description provided. Exiting.", err=True)
+        return 1
+
+    direct_file_input = _resolve_direct_file_input(build_input)
+    if require_existing_file and direct_file_input is None:
+        typer.echo(f"File not found: {build_input}", err=True)
         return 1
 
     current_git_root = get_current_git_root()
@@ -665,7 +695,6 @@ def run_open(options: OpenOptions) -> int:
     plan_mode = options.plan or config.auto_plan
     effective_editor, should_open_editor = _resolve_editor_behavior(options, config)
     mentions = _extract_mentions(build_input, options.at_files)
-    direct_file_input = _resolve_direct_file_input(build_input)
     if direct_file_input is not None and str(direct_file_input) not in mentions:
         mentions.insert(0, str(direct_file_input))
 
@@ -783,3 +812,27 @@ def run_open(options: OpenOptions) -> int:
         plan_mode=plan_mode,
         agent=planning_agent,
     )
+
+
+def run_open(options: OpenOptions) -> int:
+    """Open flow that accepts only existing file inputs.
+
+    Args:
+        options: Parsed open command options.
+
+    Returns:
+        Process-style exit code for CLI dispatch.
+    """
+    return _run_open_flow(options, require_existing_file=True)
+
+
+def run_build(options: OpenOptions) -> int:
+    """Build flow that accepts free-form intent text.
+
+    Args:
+        options: Parsed build command options.
+
+    Returns:
+        Process-style exit code for CLI dispatch.
+    """
+    return _run_open_flow(options, require_existing_file=False)

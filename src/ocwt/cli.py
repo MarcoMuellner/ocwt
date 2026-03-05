@@ -20,7 +20,13 @@ from ocwt.commands.config_cmd import (
     run_config_show,
     run_config_worktree_parent,
 )
-from ocwt.commands.open_cmd import OpenOptions, complete_at_files, run_open
+from ocwt.commands.open_cmd import (
+    OpenOptions,
+    complete_at_files,
+    complete_files,
+    run_build,
+    run_open,
+)
 
 app = typer.Typer(
     name="ocwt",
@@ -34,9 +40,46 @@ app.add_typer(config_app, name="config")
 
 @app.command("open")
 def open_command(
-    intent_or_branch: Annotated[
+    file_path: Annotated[
         str | None,
-        typer.Argument(help="Build intent or branch name.", autocompletion=complete_at_files),
+        typer.Argument(help="File path used as work context.", autocompletion=complete_files),
+    ] = None,
+    plan: Annotated[bool, typer.Option("--plan", help="Enable one-shot planning mode")] = False,
+    agent: Annotated[str | None, typer.Option("--agent", help="OpenCode agent name")] = None,
+    editor: Annotated[
+        str | None,
+        typer.Option("--editor", help="Editor command override, or 'none'"),
+    ] = None,
+) -> None:
+    """Open or create a worktree from a required file context.
+
+    Args:
+        file_path: Existing file path used as primary work context.
+        plan: Whether planning mode should run before interactive session start.
+        agent: Optional agent override for planning or branch generation.
+        editor: Optional editor override for this invocation.
+
+    Returns:
+        None. Raises ``typer.Exit`` when command execution fails.
+    """
+    exit_code = run_open(
+        OpenOptions(
+            intent_or_branch=file_path,
+            at_files=(),
+            plan=plan,
+            agent=agent,
+            editor=editor,
+        )
+    )
+    if exit_code != 0:
+        raise typer.Exit(code=exit_code)
+
+
+@app.command("build")
+def build_command(
+    intent: Annotated[
+        str | None,
+        typer.Argument(help="Build intent text.", autocompletion=complete_at_files),
     ] = None,
     at_files: Annotated[
         list[str] | None,
@@ -49,10 +92,10 @@ def open_command(
         typer.Option("--editor", help="Editor command override, or 'none'"),
     ] = None,
 ) -> None:
-    """Open or create a worktree from intent, branch, or attached files.
+    """Open or create a worktree from intent text.
 
     Args:
-        intent_or_branch: Build intent text or direct branch selector.
+        intent: Build intent text used for branch generation.
         at_files: Optional file mentions used as planning/build context.
         plan: Whether planning mode should run before interactive session start.
         agent: Optional agent override for planning or branch generation.
@@ -62,9 +105,9 @@ def open_command(
         None. Raises ``typer.Exit`` when command execution fails.
     """
     normalized_at_files = tuple(at_files or [])
-    exit_code = run_open(
+    exit_code = run_build(
         OpenOptions(
-            intent_or_branch=intent_or_branch,
+            intent_or_branch=intent,
             at_files=normalized_at_files,
             plan=plan,
             agent=agent,

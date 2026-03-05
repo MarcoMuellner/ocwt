@@ -9,6 +9,7 @@ def test_root_help_displays_commands() -> None:
 
     assert result.exit_code == 0
     assert "open" in result.stdout
+    assert "build" in result.stdout
     assert "close" in result.stdout
     assert "completion" in result.stdout
     assert "config" in result.stdout

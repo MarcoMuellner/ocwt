@@ -25,7 +25,7 @@ uvx ocwt --help
 
 ```bash
 # Open from an intent
-ocwt open "add retry queue metrics"
+ocwt build "add retry queue metrics"
 
 # Open directly from a ticket/spec file
 ocwt open pm/epic_011/ticket_003_delivery_status_mirroring_and_pruning.md
@@ -38,10 +38,10 @@ ocwt close
 
 ```bash
 # Plan first, then continue in the same session
-ocwt open "improve delivery retries" --plan
+ocwt build "improve delivery retries" --plan
 
 # Override auto-plan for one run
-ocwt open "hotfix webhook timeout" --no-plan
+ocwt build "hotfix webhook timeout" --no-plan
 
 # Close a specific branch worktree
 ocwt close feat/my-branch
@@ -66,7 +66,7 @@ See full docs for setup examples and command details.
 - Docs home: `docs/index.md`
 - Installation: `docs/installation.md`
 - Quickstart: `docs/quickstart.md`
-- Commands: `docs/commands/open.md`, `docs/commands/close.md`, `docs/commands/config.md`, `docs/commands/completion.md`
+- Commands: `docs/commands/open.md`, `docs/commands/build.md`, `docs/commands/close.md`, `docs/commands/config.md`, `docs/commands/completion.md`
 - Concepts: `docs/concepts/planning-mode.md`, `docs/concepts/branch-naming.md`, `docs/concepts/worktrees.md`
 - Troubleshooting: `docs/troubleshooting.md`
 - FAQ: `docs/faq.md`

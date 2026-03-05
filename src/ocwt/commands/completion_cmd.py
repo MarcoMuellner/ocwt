@@ -38,14 +38,14 @@ def _completion_script() -> str:
   fi
 
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "open close help -h --help completion config" -- "$cur") )
+    COMPREPLY=( $(compgen -W "open build close help -h --help completion config" -- "$cur") )
     return 0
   fi
 
   cmd=""
   for word in "${COMP_WORDS[@]}"; do
     case "$word" in
-      open|close|help|-h|--help|completion|config)
+      open|build|close|help|-h|--help|completion|config)
         cmd="$word"
         break
         ;;
@@ -54,6 +54,10 @@ def _completion_script() -> str:
 
   case "$cmd" in
     open)
+      compopt -o filenames 2>/dev/null || true
+      COMPREPLY=( $(compgen -f -- "$cur") )
+      ;;
+    build)
       path_cur="$cur"
       prefix=""
       if [[ "$cur" == @* ]]; then
