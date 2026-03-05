@@ -29,5 +29,6 @@ ocwt build "small fix" --no-plan
 ## Notes
 
 - `build` accepts intent text and optional `@file` mentions.
+- If intent starts with `-`, pass `--` before it (example: `ocwt build -- "- bullet style intent"`).
 - In planning mode, default planning agent is `plan` unless `--agent` is provided.
 - If branch generation fails, `build` falls back to a deterministic semantic branch.

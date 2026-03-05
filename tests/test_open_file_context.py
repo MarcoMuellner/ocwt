@@ -8,6 +8,7 @@ from ocwt.commands.open_cmd import (
     _ensure_branch_has_file_slug,
     _file_context_slug,
     _pull_repo_if_enabled,
+    _resolve_direct_file_input,
     run_open,
 )
 from ocwt.config_store import OcwtConfig
@@ -23,6 +24,14 @@ def test_file_context_slug_keeps_numeric_identifiers() -> None:
     file_path = Path("epic_123/ticket_456_refund.md")
 
     assert _file_context_slug(file_path) == "epic-123-ticket-456-refund"
+
+
+def test_resolve_direct_file_input_ignores_too_long_path() -> None:
+    long_intent = "x" * 4096
+
+    resolved = _resolve_direct_file_input(long_intent)
+
+    assert resolved is None
 
 
 def test_ensure_branch_has_file_slug_appends_slug() -> None:

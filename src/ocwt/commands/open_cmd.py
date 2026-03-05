@@ -127,8 +127,11 @@ def _resolve_direct_file_input(build_input: str) -> Path | None:
         Absolute file path when input resolves to an existing file, otherwise ``None``.
     """
     candidate = Path(build_input).expanduser()
-    if candidate.is_file():
-        return candidate.resolve()
+    try:
+        if candidate.is_file():
+            return candidate.resolve()
+    except OSError:
+        return None
     return None
 
 
