@@ -7,7 +7,7 @@
 
 ## CLI Surface
 
-- `ocwt open [file-path] [--plan] [--agent <name>] [--editor <exe>|none]`
+- `ocwt open [file-path|existing-branch] [--plan] [--agent <name>] [--editor <exe>|none]`
 - `ocwt build [intent] [@file ...] [--plan] [--agent <name>] [--editor <exe>|none]`
 - `ocwt close [branch|worktree_path]`
 - `ocwt completion [bash|zsh]`

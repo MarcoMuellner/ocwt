@@ -108,6 +108,36 @@ def test_open_requires_existing_file(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert exit_code == 1
 
 
+def test_open_reuses_existing_branch_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(repo_root)
+    launched_cwds = _patch_opencode(monkeypatch)
+
+    branch = "feat/otto-self-awareness-transparency"
+    existing_worktree = (
+        repo_root.parent / ".worktrees" / "feat__otto-self-awareness-transparency"
+    ).resolve()
+    _git(repo_root, "worktree", "add", "-b", branch, str(existing_worktree), "main")
+
+    exit_code = run_open(
+        OpenOptions(
+            intent_or_branch=branch,
+            at_files=(),
+            plan=False,
+            agent=None,
+            editor=None,
+        )
+    )
+
+    assert exit_code == 0
+    assert launched_cwds == [existing_worktree]
+
+
 def test_close_removes_worktree_and_branch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()

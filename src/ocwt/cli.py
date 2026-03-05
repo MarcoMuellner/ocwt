@@ -42,7 +42,10 @@ app.add_typer(config_app, name="config")
 def open_command(
     file_path: Annotated[
         str | None,
-        typer.Argument(help="File path used as work context.", autocompletion=complete_files),
+        typer.Argument(
+            help="File path context, or existing branch name to reopen.",
+            autocompletion=complete_files,
+        ),
     ] = None,
     plan: Annotated[bool, typer.Option("--plan", help="Enable one-shot planning mode")] = False,
     agent: Annotated[str | None, typer.Option("--agent", help="OpenCode agent name")] = None,
@@ -51,10 +54,10 @@ def open_command(
         typer.Option("--editor", help="Editor command override, or 'none'"),
     ] = None,
 ) -> None:
-    """Open or create a worktree from a required file context.
+    """Open or create a worktree from file context, or reopen existing branch worktrees.
 
     Args:
-        file_path: Existing file path used as primary work context.
+        file_path: Existing file path context, or existing branch name to reopen.
         plan: Whether planning mode should run before interactive session start.
         agent: Optional agent override for planning or branch generation.
         editor: Optional editor override for this invocation.

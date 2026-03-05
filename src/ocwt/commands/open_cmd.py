@@ -672,7 +672,7 @@ def _run_open_flow(options: OpenOptions, *, require_existing_file: bool) -> int:
     build_input = trim(options.intent_or_branch or "")
     if not build_input:
         if require_existing_file:
-            build_input = trim(typer.prompt("Which file should be used as context?"))
+            build_input = trim(typer.prompt("Which file path or existing branch should be opened?"))
         else:
             build_input = trim(typer.prompt("What do you want to build?"))
     if not build_input:
@@ -680,9 +680,6 @@ def _run_open_flow(options: OpenOptions, *, require_existing_file: bool) -> int:
         return 1
 
     direct_file_input = _resolve_direct_file_input(build_input)
-    if require_existing_file and direct_file_input is None:
-        typer.echo(f"File not found: {build_input}", err=True)
-        return 1
 
     current_git_root = get_current_git_root()
     if current_git_root is None:
@@ -715,6 +712,10 @@ def _run_open_flow(options: OpenOptions, *, require_existing_file: bool) -> int:
             plan_mode=plan_mode,
             agent=planning_agent,
         )
+
+    if require_existing_file and direct_file_input is None:
+        typer.echo(f"File not found: {build_input}", err=True)
+        return 1
 
     attached_files: list[Path] = []
     fallback_seed = build_input

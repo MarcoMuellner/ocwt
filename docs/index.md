@@ -10,7 +10,7 @@
 
 ## Core ideas
 
-- `open` creates or reuses a worktree from a file.
+- `open` opens from a file or reuses an existing worktree by branch name.
 - `build` creates or reuses a worktree from free-form intent.
 - `close` removes the worktree and deletes the local branch safely.
 - planning mode can run first and then continue in the same session.
