@@ -9,6 +9,7 @@ import {
   deleteLocalBranch,
   findRepoRoot,
   findWorktreeByBranch,
+  findWorktreeContainingPath,
   findWorktreeByPath,
   getBaseBranch,
   getCurrentBranch,
@@ -164,6 +165,32 @@ describe("git helpers", () => {
     await expect(
       findWorktreeByPath(repo, missingWorktree),
     ).resolves.toBeUndefined()
+  })
+
+  it("finds a containing worktree from a nested path", async () => {
+    const repo = await createRepo()
+    const worktreeParent = await fs.mkdtemp(
+      path.join(os.tmpdir(), "ocwt-worktree-"),
+    )
+    tempDirectories.push(worktreeParent)
+    const worktreeDirectory = path.join(worktreeParent, "feat-native-open")
+
+    await expect(
+      createWorktree(repo, {
+        branch: "feat/native-open",
+        directory: worktreeDirectory,
+        startPoint: "main",
+      }),
+    ).resolves.toBeUndefined()
+
+    const nestedDirectory = path.join(worktreeDirectory, "src", "nested")
+    await fs.mkdir(nestedDirectory, { recursive: true })
+
+    await expect(
+      findWorktreeContainingPath(repo, nestedDirectory),
+    ).resolves.toMatchObject({
+      branch: "feat/native-open",
+    })
   })
 
   it("detects tracked paths", async () => {

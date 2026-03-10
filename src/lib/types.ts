@@ -44,6 +44,14 @@ export interface CloseToolInput {
   force?: boolean
 }
 
+export interface CloseToolSuccessData {
+  repoRoot: string
+  branch: string
+  worktreeDir: string
+  removedWorktree: boolean
+  deletedBranch: boolean
+}
+
 export interface ListToolInput {
   includeSessions?: boolean
 }

@@ -3,7 +3,7 @@ import { execFile } from "node:child_process"
 import path from "node:path"
 
 import { ERROR_CODES, OcwtError } from "./errors.js"
-import { canonicalizePath } from "./paths.js"
+import { canonicalizePath, isWithinParentDirectory } from "./paths.js"
 
 const execFileAsync = promisify(execFile)
 
@@ -190,6 +190,51 @@ export async function findWorktreeByPath(
   }
 
   return undefined
+}
+
+/**
+ * Finds the registered worktree that contains the provided path.
+ *
+ * @param cwd - Any directory inside the target repository.
+ * @param targetPath - A path at the worktree root or anywhere beneath it.
+ * @returns The containing worktree entry, if one exists.
+ */
+export async function findWorktreeContainingPath(
+  cwd: string,
+  targetPath: string,
+): Promise<GitWorktreeEntry | undefined> {
+  const canonicalTargetPath = await canonicalizePath(targetPath)
+  const worktrees = await listWorktrees(cwd)
+
+  for (const entry of worktrees) {
+    if (await isWithinParentDirectory(entry.directory, canonicalTargetPath)) {
+      return entry
+    }
+  }
+
+  return undefined
+}
+
+/**
+ * Returns the primary worktree directory for the repository.
+ *
+ * @param cwd - Any directory inside the target repository.
+ * @returns The canonical directory of the primary worktree.
+ */
+export async function getPrimaryWorktreeDirectory(
+  cwd: string,
+): Promise<string> {
+  const worktrees = await listWorktrees(cwd)
+  const primaryWorktree = worktrees[0]
+
+  if (!primaryWorktree) {
+    throw new OcwtError(
+      ERROR_CODES.targetNotFound,
+      "No git worktrees are registered for this repository",
+    )
+  }
+
+  return canonicalizePath(primaryWorktree.directory)
 }
 
 /**
