@@ -2,6 +2,7 @@ import path from "node:path"
 
 import { z } from "zod"
 
+import { loadOcwtConfig, resolveToolConfig } from "../lib/config.js"
 import {
   deleteLocalBranch,
   findRepoRoot,
@@ -28,6 +29,7 @@ type ParsedCloseToolInput = z.output<typeof CloseToolInputSchema>
 export interface CloseToolOptions {
   cwd: string
   worktreeParent?: string
+  configPath?: string
 }
 
 /**
@@ -44,11 +46,15 @@ export async function ocwtClose(
   try {
     const parsedInput = CloseToolInputSchema.parse(input)
     const repoRoot = await findRepoRoot(options.cwd)
+    const config = resolveToolConfig(
+      await loadOcwtConfig(options),
+      buildToolConfigOverrides(options.worktreeParent),
+    )
     const primaryWorktreeDir = await getPrimaryWorktreeDirectory(repoRoot)
     const baseBranch = await getBaseBranch(primaryWorktreeDir)
     const target = await resolveCloseTarget(
       parsedInput,
-      options,
+      buildCloseOptions(options, config.worktreeParent),
       repoRoot,
       primaryWorktreeDir,
     )
@@ -231,6 +237,7 @@ async function enforceManagedParent(
   target: ResolvedCloseTarget,
   worktreeParent?: string,
 ): Promise<ResolvedCloseTarget> {
+  if (target.isPrimaryWorktree) return target
   if (!worktreeParent) return target
 
   const withinParent = await isWithinParentDirectory(
@@ -265,6 +272,23 @@ function buildCloseData(
     removedWorktree,
     deletedBranch,
   }
+}
+
+function buildCloseOptions(
+  options: CloseToolOptions,
+  worktreeParent?: string,
+): CloseToolOptions {
+  return {
+    cwd: options.cwd,
+    ...(options.configPath === undefined
+      ? {}
+      : { configPath: options.configPath }),
+    ...(worktreeParent === undefined ? {} : { worktreeParent }),
+  }
+}
+
+function buildToolConfigOverrides(worktreeParent?: string) {
+  return worktreeParent === undefined ? {} : { worktreeParent }
 }
 
 function handleCloseError(error: unknown) {

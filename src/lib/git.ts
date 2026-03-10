@@ -96,6 +96,27 @@ export async function getCurrentBranch(
 }
 
 /**
+ * Returns true when a local branch exists in the repository.
+ *
+ * @param cwd - Any directory inside the target repository.
+ * @param branch - The local branch name to check.
+ * @returns True when the branch exists under `refs/heads/`.
+ */
+export async function localBranchExists(
+  cwd: string,
+  branch: string,
+): Promise<boolean> {
+  const repoRoot = await findRepoRoot(cwd)
+  const result = await runGit(repoRoot, [
+    "show-ref",
+    "--verify",
+    "--quiet",
+    `refs/heads/${branch}`,
+  ])
+  return result.exitCode === 0
+}
+
+/**
  * Resolves the repository base branch using remote HEAD first, then common local defaults.
  *
  * @param cwd - Any directory inside the target repository.

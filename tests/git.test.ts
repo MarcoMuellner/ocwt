@@ -13,6 +13,7 @@ import {
   findWorktreeByPath,
   getBaseBranch,
   getCurrentBranch,
+  localBranchExists,
   isProtectedBranch,
   isTrackedPath,
   listWorktrees,
@@ -113,6 +114,13 @@ describe("git helpers", () => {
       exitCode: 0,
     })
     await expect(getCurrentBranch(repo)).resolves.toBeUndefined()
+  })
+
+  it("detects when a local branch exists", async () => {
+    const repo = await createRepo()
+
+    await expect(localBranchExists(repo, "main")).resolves.toBe(true)
+    await expect(localBranchExists(repo, "feat/missing")).resolves.toBe(false)
   })
 
   it("creates, lists, finds, removes, and deletes worktree branches", async () => {

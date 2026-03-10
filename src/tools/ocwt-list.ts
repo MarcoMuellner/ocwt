@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+import { loadOcwtConfig, resolveToolConfig } from "../lib/config.js"
 import { ERROR_CODES, OcwtError } from "../lib/errors.js"
 import { findRepoRoot, getBaseBranch, listWorktrees } from "../lib/git.js"
 import { fail, ok, stringifyEnvelope } from "../lib/json.js"
@@ -21,6 +22,7 @@ const ListToolInputSchema = z.object({
 export interface ListToolOptions {
   cwd: string
   worktreeParent?: string
+  configPath?: string
   sessionClient?: SessionClient
 }
 
@@ -38,10 +40,14 @@ export async function ocwtList(
   try {
     const parsedInput = ListToolInputSchema.parse(input)
     const repoRoot = await findRepoRoot(options.cwd)
+    const config = resolveToolConfig(
+      await loadOcwtConfig(options),
+      buildToolConfigOverrides(options.worktreeParent),
+    )
     const baseBranch = await getBaseBranch(repoRoot)
     const managedParent = resolveManagedWorktreeParent(
       repoRoot,
-      options.worktreeParent,
+      config.worktreeParent,
     )
     const worktrees = await listWorktrees(repoRoot)
 
@@ -118,4 +124,8 @@ function handleListError(error: unknown) {
   const message =
     error instanceof Error ? error.message : "Unknown ocwt_list error"
   return fail(ERROR_CODES.targetNotFound, message)
+}
+
+function buildToolConfigOverrides(worktreeParent?: string) {
+  return worktreeParent === undefined ? {} : { worktreeParent }
 }

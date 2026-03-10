@@ -3,11 +3,13 @@ import { promises as fs } from "node:fs"
 
 import { z } from "zod"
 
+import { loadOcwtConfig, resolveToolConfig } from "../lib/config.js"
 import {
   createWorktree,
   findRepoRoot,
   findWorktreeByBranch,
   getBaseBranch,
+  localBranchExists,
 } from "../lib/git.js"
 import { fail, ok, stringifyEnvelope } from "../lib/json.js"
 import {
@@ -24,6 +26,7 @@ import {
   ensureSessionForDirectory,
   type SessionClient,
 } from "../lib/session.js"
+import { applySharedStateSymlinks } from "../lib/symlink.js"
 import type { OpenToolInput, OpenToolSuccessData } from "../lib/types.js"
 
 const OpenToolInputSchema = z.object({
@@ -39,6 +42,7 @@ type ParsedOpenToolInput = z.output<typeof OpenToolInputSchema>
 export interface OpenToolOptions {
   cwd: string
   worktreeParent?: string
+  configPath?: string
   sessionClient?: SessionClient
   interactive?: boolean
 }
@@ -72,8 +76,12 @@ export async function ocwtOpen(
     await validateAttachedFiles(options.cwd, parsedInput.files)
 
     const repoRoot = await findRepoRoot(options.cwd)
+    const config = resolveToolConfig(
+      await loadOcwtConfig(options),
+      buildToolConfigOverrides(options.worktreeParent),
+    )
     const baseBranch = await getBaseBranch(repoRoot)
-    const branch = resolveTargetBranch(parsedInput)
+    const branch = await resolveTargetBranch(parsedInput, repoRoot)
 
     const existingWorktree = await findWorktreeByBranch(repoRoot, branch)
     if (existingWorktree) {
@@ -84,7 +92,15 @@ export async function ocwtOpen(
         worktreeDir: existingWorktree.directory,
         created: false,
         reused: true,
-        symlinkMessages: [],
+        symlinkMessages: await applySharedStateSymlinks(
+          repoRoot,
+          existingWorktree.directory,
+          {
+            symlinkOpencode: config.symlinkOpencode,
+            symlinkIdea: config.symlinkIdea,
+            symlinkEnv: config.symlinkEnv,
+          },
+        ),
       }
 
       const sessionResult = options.sessionClient
@@ -116,7 +132,7 @@ export async function ocwtOpen(
 
     const worktreeParent = resolveManagedWorktreeParent(
       repoRoot,
-      options.worktreeParent,
+      config.worktreeParent,
     )
     await fs.mkdir(worktreeParent, { recursive: true })
 
@@ -134,7 +150,11 @@ export async function ocwtOpen(
       worktreeDir,
       created: true,
       reused: false,
-      symlinkMessages: [],
+      symlinkMessages: await applySharedStateSymlinks(repoRoot, worktreeDir, {
+        symlinkOpencode: config.symlinkOpencode,
+        symlinkIdea: config.symlinkIdea,
+        symlinkEnv: config.symlinkEnv,
+      }),
     }
 
     const sessionResult = options.sessionClient
@@ -191,10 +211,21 @@ async function validateAttachedFiles(
   }
 }
 
-function resolveTargetBranch(input: ParsedOpenToolInput): string {
+async function resolveTargetBranch(
+  input: ParsedOpenToolInput,
+  repoRoot: string,
+): Promise<string> {
   const branchCandidate =
     input.intentOrBranch?.trim() || input.files?.join("-") || ""
   const normalized = normalizeBranchName(branchCandidate)
+
+  if (
+    input.intentOrBranch &&
+    normalized &&
+    (await localBranchExists(repoRoot, normalized))
+  ) {
+    return normalized
+  }
 
   if (normalized && hasAllowedPrefix(normalized)) return normalized
 
@@ -254,6 +285,10 @@ function mergeSessionMetadata(
       ? {}
       : { switchedSession: sessionResult.switchedSession }),
   }
+}
+
+function buildToolConfigOverrides(worktreeParent?: string) {
+  return worktreeParent === undefined ? {} : { worktreeParent }
 }
 
 function handleOpenError(error: unknown) {

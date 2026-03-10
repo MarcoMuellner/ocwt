@@ -157,9 +157,16 @@ describe("ocwtList", () => {
     const manualParent = await fs.mkdtemp(
       path.join(os.tmpdir(), "ocwt-manual-parent-"),
     )
-    tempDirectories.push(manualParent)
+    const configDirectory = await fs.mkdtemp(
+      path.join(os.tmpdir(), "ocwt-list-config-"),
+    )
+    tempDirectories.push(manualParent, configDirectory)
+    const missingConfigPath = path.join(configDirectory, "missing-config.json")
 
-    await ocwtOpen({ intentOrBranch: "feat/default-managed" }, { cwd: repo })
+    await ocwtOpen(
+      { intentOrBranch: "feat/default-managed" },
+      { cwd: repo, configPath: missingConfigPath },
+    )
     await runGit(repo, [
       "worktree",
       "add",
@@ -169,7 +176,9 @@ describe("ocwtList", () => {
       "main",
     ])
 
-    const result = parseEnvelope(await ocwtList({}, { cwd: repo }))
+    const result = parseEnvelope(
+      await ocwtList({}, { cwd: repo, configPath: missingConfigPath }),
+    )
     const entries = result.data?.entries as
       | Array<{ branch: string }>
       | undefined
