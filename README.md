@@ -85,6 +85,8 @@ npm publish --provenance --access public
 
 No long-lived `NPM_TOKEN` secret is required when trusted publishing is configured correctly.
 
+The release workflow also upgrades npm in CI to meet npm's current trusted-publishing requirement (`npm` 11.5.1+).
+
 ## Current status
 
 The project now includes deterministic branch, path, git, session, config, and symlink helpers plus real `ocwt_open`, `ocwt_close`, and `ocwt_list` flows for the core worktree lifecycle. Commands are now injected from the plugin at runtime, and the package is structured for standalone npm distribution through OpenCode's `plugin` config. The implementation plan is documented in:
