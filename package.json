@@ -2,7 +2,24 @@
   "name": "opencode-ocwt",
   "version": "0.1.0",
   "description": "OpenCode plugin for native ocwt worktree workflows",
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MarcoMuellner/ocwt.git"
+  },
+  "homepage": "https://github.com/MarcoMuellner/ocwt#readme",
+  "bugs": {
+    "url": "https://github.com/MarcoMuellner/ocwt/issues"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "git-worktree",
+    "worktree",
+    "ocwt"
+  ],
+  "packageManager": "pnpm@10.28.1",
   "main": "dist/plugin.js",
   "types": "dist/plugin.d.ts",
   "exports": {
@@ -13,14 +30,19 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=22.0.0",
     "pnpm": ">=9.0.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "clean": "node ./scripts/clean-dist.mjs",
+    "build": "pnpm clean && tsc -p tsconfig.build.json",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm format:check",
+    "pack:dry-run": "npm pack --dry-run",
+    "version:nightly": "node ./scripts/prepare-nightly-version.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint . --deny-warnings",
     "format": "prettier --write .",
@@ -28,6 +50,9 @@
     "prepublishOnly": "pnpm build",
     "test": "vitest run",
     "test:watch": "vitest"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "zod": "^3.24.2"

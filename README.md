@@ -50,11 +50,40 @@ OpenCode installs npm plugins automatically with Bun at startup.
 
 ```bash
 pnpm install
+pnpm clean
+pnpm check
 pnpm typecheck
 pnpm lint
 pnpm test
+pnpm build
+pnpm pack:dry-run
 pnpm format:check
 ```
+
+## Release workflow
+
+The repository now ships with GitHub Actions for CI, stable releases, and nightly prereleases.
+
+- `CI` runs on pushes and pull requests, executes `pnpm check`, and verifies the publishable tarball with `npm pack --dry-run`
+- `Release` runs when a GitHub release is published, verifies that the release tag matches `package.json`, and publishes to npm with provenance
+- `Nightly Release` runs on a schedule or manual dispatch, stamps a unique `-nightly.<timestamp>` version, publishes it to npm under the `nightly` dist-tag, and creates a GitHub prerelease
+
+### npm trusted publishing
+
+Stable and nightly publishing are configured for npm trusted publishing with GitHub Actions.
+
+Before the workflows can publish, configure an npm trusted publisher for this repository and the two workflow files:
+
+- `.github/workflows/release.yml`
+- `.github/workflows/nightly.yml`
+
+The workflows use `id-token: write` and publish with:
+
+```bash
+npm publish --provenance --access public
+```
+
+No long-lived `NPM_TOKEN` secret is required when trusted publishing is configured correctly.
 
 ## Current status
 
