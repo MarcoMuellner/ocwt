@@ -85,7 +85,7 @@ npm publish --provenance --access public
 
 No long-lived `NPM_TOKEN` secret is required when trusted publishing is configured correctly.
 
-The release workflow also upgrades npm in CI to meet npm's current trusted-publishing requirement (`npm` 11.5.1+).
+The release workflow also avoids `actions/setup-node` token-auth registry configuration during publish, and upgrades npm in CI to meet npm's current trusted-publishing requirement (`npm` 11.5.1+).
 
 ## Current status
 
