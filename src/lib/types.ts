@@ -27,6 +27,18 @@ export interface OpenToolInput {
   reuseOnly?: boolean
 }
 
+export interface OpenToolSuccessData {
+  repoRoot: string
+  baseBranch: string
+  branch: string
+  worktreeDir: string
+  created: boolean
+  reused: boolean
+  symlinkMessages: string[]
+  sessionID?: string
+  switchedSession?: boolean
+}
+
 export interface CloseToolInput {
   branchOrPath?: string
   force?: boolean
