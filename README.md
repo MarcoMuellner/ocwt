@@ -65,17 +65,17 @@ pnpm format:check
 The repository now ships with GitHub Actions for CI, stable releases, and nightly prereleases.
 
 - `CI` runs on pushes and pull requests, executes `pnpm check`, and verifies the publishable tarball with `npm pack --dry-run`
-- `Release` runs when a GitHub release is published, verifies that the release tag matches `package.json`, and publishes to npm with provenance
-- `Nightly Release` runs on a schedule or manual dispatch, stamps a unique `-nightly.<timestamp>` version, publishes it to npm under the `nightly` dist-tag, and creates a GitHub prerelease
+- `.github/workflows/release.yml` handles both stable and nightly publishing so npm trusted publishing only needs one workflow file
+- stable publishing runs when a GitHub release is published, verifies that the release tag matches `package.json`, and publishes to npm with provenance
+- nightly publishing runs from the same workflow on a schedule or manual dispatch, always checks out `main`, stamps a unique `-nightly.<timestamp>` version, publishes it to npm under the `nightly` dist-tag, and creates a GitHub prerelease
 
 ### npm trusted publishing
 
 Stable and nightly publishing are configured for npm trusted publishing with GitHub Actions.
 
-Before the workflows can publish, configure an npm trusted publisher for this repository and the two workflow files:
+Before the workflows can publish, configure an npm trusted publisher for this repository and this workflow file:
 
 - `.github/workflows/release.yml`
-- `.github/workflows/nightly.yml`
 
 The workflows use `id-token: write` and publish with:
 

@@ -4,10 +4,17 @@ on:
   release:
     types:
       - published
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
+
+concurrency:
+  group: release-publish
+  cancel-in-progress: false
 
 jobs:
   publish:
@@ -15,6 +22,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.target_commitish || 'main' }}
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -31,7 +40,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Stamp nightly version
+        if: github.event_name != 'release'
+        id: nightly_version
+        run: echo "version=$(pnpm --silent version:nightly)" >> "$GITHUB_OUTPUT"
+
       - name: Verify release tag matches package version
+        if: github.event_name == 'release'
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
@@ -45,4 +60,24 @@ jobs:
         run: pnpm check
 
       - name: Publish to npm
+        if: github.event_name == 'release'
         run: npm publish --provenance --access public
+
+      - name: Publish nightly package to npm
+        if: github.event_name != 'release'
+        run: npm publish --tag nightly --provenance --access public
+
+      - name: Create nightly GitHub prerelease
+        if: github.event_name != 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.nightly_version.outputs.version }}
+          name: Nightly ${{ steps.nightly_version.outputs.version }}
+          prerelease: true
+          generate_release_notes: false
+          body: |
+            Automated nightly prerelease for `${{ steps.nightly_version.outputs.version }}`.
+
+            - Commit: `${{ github.sha }}`
+            - Workflow: `${{ github.workflow }}`
+            - npm tag: `nightly`
