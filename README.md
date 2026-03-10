@@ -45,7 +45,7 @@ pnpm format:check
 
 ## Current status
 
-The project now includes the first shared domain helpers for deterministic branch, path, and git lifecycle handling. The implementation plan is documented in:
+The project now includes deterministic branch, path, and git lifecycle helpers plus edge-case tests for failure-closed behavior. The implementation plan is documented in:
 
 - `OPENCODE_NATIVE_OCWT_DESIGN.md`
 - `OPENCODE_NATIVE_OCWT_IMPLEMENTATION_PLAN.md`
@@ -57,3 +57,4 @@ The project now includes the first shared domain helpers for deterministic branc
 - fail closed for destructive worktree operations
 - prefer deterministic behavior over implicit heuristics
 - add tests alongside any branch, git, path, or symlink logic
+- harden edge cases before moving orchestration into tool entrypoints
