@@ -17,6 +17,10 @@ import {
 } from "../lib/branch.js"
 import { resolveWorktreeDirectory } from "../lib/paths.js"
 import { ERROR_CODES, OcwtError } from "../lib/errors.js"
+import {
+  ensureSessionForDirectory,
+  type SessionClient,
+} from "../lib/session.js"
 import type { OpenToolInput, OpenToolSuccessData } from "../lib/types.js"
 
 const OpenToolInputSchema = z.object({
@@ -32,6 +36,8 @@ type ParsedOpenToolInput = z.output<typeof OpenToolInputSchema>
 export interface OpenToolOptions {
   cwd: string
   worktreeParent?: string
+  sessionClient?: SessionClient
+  interactive?: boolean
 }
 
 /**
@@ -68,16 +74,28 @@ export async function ocwtOpen(
 
     const existingWorktree = await findWorktreeByBranch(repoRoot, branch)
     if (existingWorktree) {
+      const baseData: OpenToolSuccessData = {
+        repoRoot,
+        baseBranch,
+        branch,
+        worktreeDir: existingWorktree.directory,
+        created: false,
+        reused: true,
+        symlinkMessages: [],
+      }
+
+      const sessionResult = options.sessionClient
+        ? await tryEnsureSession(baseData, options)
+        : undefined
+
+      if (typeof sessionResult === "string") return sessionResult
+
       return stringifyEnvelope(
-        ok<OpenToolSuccessData>("OK", "Reused existing worktree", {
-          repoRoot,
-          baseBranch,
-          branch,
-          worktreeDir: existingWorktree.directory,
-          created: false,
-          reused: true,
-          symlinkMessages: [],
-        }),
+        ok<OpenToolSuccessData>(
+          "OK",
+          "Reused existing worktree",
+          mergeSessionMetadata(baseData, sessionResult),
+        ),
       )
     }
 
@@ -106,16 +124,28 @@ export async function ocwtOpen(
       startPoint: baseBranch,
     })
 
+    const baseData: OpenToolSuccessData = {
+      repoRoot,
+      baseBranch,
+      branch,
+      worktreeDir,
+      created: true,
+      reused: false,
+      symlinkMessages: [],
+    }
+
+    const sessionResult = options.sessionClient
+      ? await tryEnsureSession(baseData, options)
+      : undefined
+
+    if (typeof sessionResult === "string") return sessionResult
+
     return stringifyEnvelope(
-      ok<OpenToolSuccessData>("OK", "Created new worktree", {
-        repoRoot,
-        baseBranch,
-        branch,
-        worktreeDir,
-        created: true,
-        reused: false,
-        symlinkMessages: [],
-      }),
+      ok<OpenToolSuccessData>(
+        "OK",
+        "Created new worktree",
+        mergeSessionMetadata(baseData, sessionResult),
+      ),
     )
   } catch (error) {
     return stringifyEnvelope(handleOpenError(error))
@@ -181,6 +211,58 @@ function resolveWorktreeParent(
     path.dirname(repoRoot),
     `${path.basename(repoRoot)}_worktrees`,
   )
+}
+
+async function tryEnsureSession(
+  baseData: OpenToolSuccessData,
+  options: OpenToolOptions,
+) {
+  try {
+    return await ensureSessionForDirectory(
+      options.sessionClient!,
+      baseData.worktreeDir,
+      {
+        ...(options.interactive === undefined
+          ? {}
+          : { interactive: options.interactive }),
+        title: baseData.branch,
+      },
+    )
+  } catch (error) {
+    if (
+      error instanceof OcwtError &&
+      (error.code === ERROR_CODES.sessionCreateFailed ||
+        error.code === ERROR_CODES.sessionSwitchFailed)
+    ) {
+      return stringifyEnvelope(
+        fail<OpenToolSuccessData>(error.code, error.message, {
+          data: baseData,
+          nextAction:
+            "The worktree is ready, but the session step failed. Re-run open or attach to the returned worktree directory.",
+        }),
+      )
+    }
+
+    throw error
+  }
+}
+
+function mergeSessionMetadata(
+  baseData: OpenToolSuccessData,
+  sessionResult?: {
+    sessionID: string
+    switchedSession: boolean
+  },
+): OpenToolSuccessData {
+  return {
+    ...baseData,
+    ...(sessionResult?.sessionID === undefined
+      ? {}
+      : { sessionID: sessionResult.sessionID }),
+    ...(sessionResult?.switchedSession === undefined
+      ? {}
+      : { switchedSession: sessionResult.switchedSession }),
+  }
 }
 
 function handleOpenError(error: unknown) {

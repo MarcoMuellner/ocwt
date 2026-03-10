@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest"
 
 import { runGit } from "../src/lib/git.js"
 import { canonicalizePath } from "../src/lib/paths.js"
+import type { SessionClient } from "../src/lib/session.js"
 import { ocwtOpen } from "../src/tools/ocwt-open.js"
 import type { ResultEnvelope } from "../src/lib/types.js"
 
@@ -141,5 +142,135 @@ describe("ocwtOpen", () => {
 
     expect(result.ok).toBe(false)
     expect(result.code).toBe("INVALID_INPUT")
+  })
+
+  it("creates and returns a worktree-bound session when a session client is provided", async () => {
+    const repo = await createRepo()
+    const worktreeParent = await fs.mkdtemp(
+      path.join(os.tmpdir(), "ocwt-parent-"),
+    )
+    tempDirectories.push(worktreeParent)
+
+    const selected: string[] = []
+    const client: SessionClient = {
+      async listSessions() {
+        return []
+      },
+      async createSession(input) {
+        return {
+          id: "session-1",
+          directory: input.directory,
+          ...(input.title === undefined ? {} : { title: input.title }),
+        }
+      },
+      async selectSession(input) {
+        selected.push(input.sessionID)
+      },
+    }
+
+    const result = parseEnvelope(
+      await ocwtOpen(
+        { intentOrBranch: "feat/native-open" },
+        {
+          cwd: repo,
+          worktreeParent,
+          sessionClient: client,
+          interactive: true,
+        },
+      ),
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.data).toMatchObject({
+      sessionID: "session-1",
+      switchedSession: true,
+    })
+    expect(selected).toEqual(["session-1"])
+  })
+
+  it("returns failure metadata when session creation fails after the worktree is created", async () => {
+    const repo = await createRepo()
+    const worktreeParent = await fs.mkdtemp(
+      path.join(os.tmpdir(), "ocwt-parent-"),
+    )
+    tempDirectories.push(worktreeParent)
+
+    const client: SessionClient = {
+      async listSessions() {
+        return []
+      },
+      async createSession() {
+        throw new Error("session backend unavailable")
+      },
+    }
+
+    const result = parseEnvelope(
+      await ocwtOpen(
+        { intentOrBranch: "feat/native-open" },
+        { cwd: repo, worktreeParent, sessionClient: client },
+      ),
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.code).toBe("SESSION_CREATE_FAILED")
+    expect(result.data).toMatchObject({
+      branch: "feat/native-open",
+      created: true,
+      reused: false,
+      worktreeDir: path.join(worktreeParent, "feat__native-open"),
+    })
+  })
+
+  it("returns failure metadata when session switching fails after worktree reuse", async () => {
+    const repo = await createRepo()
+    const worktreeParent = await fs.mkdtemp(
+      path.join(os.tmpdir(), "ocwt-parent-"),
+    )
+    tempDirectories.push(worktreeParent)
+
+    await ocwtOpen(
+      { intentOrBranch: "feat/native-open" },
+      { cwd: repo, worktreeParent },
+    )
+
+    const client: SessionClient = {
+      async listSessions() {
+        return [
+          {
+            id: "session-1",
+            directory: path.join(worktreeParent, "feat__native-open"),
+          },
+        ]
+      },
+      async createSession() {
+        throw new Error("should not create")
+      },
+      async selectSession() {
+        throw new Error("switch failed")
+      },
+    }
+
+    const result = parseEnvelope(
+      await ocwtOpen(
+        { intentOrBranch: "feat/native-open" },
+        {
+          cwd: repo,
+          worktreeParent,
+          sessionClient: client,
+          interactive: true,
+        },
+      ),
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.code).toBe("SESSION_SWITCH_FAILED")
+    expect(result.data).toMatchObject({
+      branch: "feat/native-open",
+      created: false,
+      reused: true,
+      worktreeDir: await canonicalizePath(
+        path.join(worktreeParent, "feat__native-open"),
+      ),
+    })
   })
 })
