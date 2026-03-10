@@ -26,6 +26,25 @@ export function resolveWorktreeDirectory(
 }
 
 /**
+ * Resolves the default ocwt-managed worktree parent for a repository when no override is provided.
+ *
+ * @param repoRoot - The canonical repository root directory.
+ * @param configuredParent - An optional explicit worktree parent override.
+ * @returns The absolute managed worktree parent directory.
+ */
+export function resolveManagedWorktreeParent(
+  repoRoot: string,
+  configuredParent?: string,
+): string {
+  if (configuredParent) return path.resolve(configuredParent)
+
+  return path.join(
+    path.dirname(repoRoot),
+    `${path.basename(repoRoot)}_worktrees`,
+  )
+}
+
+/**
  * Normalizes a path for reliable comparisons across relative input, symbolic links, and platforms.
  *
  * @param targetPath - The path to normalize.

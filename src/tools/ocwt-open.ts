@@ -15,7 +15,10 @@ import {
   normalizeBranchName,
   toDeterministicFallback,
 } from "../lib/branch.js"
-import { resolveWorktreeDirectory } from "../lib/paths.js"
+import {
+  resolveManagedWorktreeParent,
+  resolveWorktreeDirectory,
+} from "../lib/paths.js"
 import { ERROR_CODES, OcwtError } from "../lib/errors.js"
 import {
   ensureSessionForDirectory,
@@ -111,7 +114,7 @@ export async function ocwtOpen(
       )
     }
 
-    const worktreeParent = resolveWorktreeParent(
+    const worktreeParent = resolveManagedWorktreeParent(
       repoRoot,
       options.worktreeParent,
     )
@@ -199,18 +202,6 @@ function resolveTargetBranch(input: ParsedOpenToolInput): string {
   if (branchBody) return `feat/${branchBody}`
 
   return toDeterministicFallback(branchCandidate)
-}
-
-function resolveWorktreeParent(
-  repoRoot: string,
-  configuredParent?: string,
-): string {
-  if (configuredParent) return path.resolve(configuredParent)
-
-  return path.join(
-    path.dirname(repoRoot),
-    `${path.basename(repoRoot)}_worktrees`,
-  )
 }
 
 async function tryEnsureSession(

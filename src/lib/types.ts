@@ -55,3 +55,16 @@ export interface CloseToolSuccessData {
 export interface ListToolInput {
   includeSessions?: boolean
 }
+
+export interface ListToolEntry {
+  branch: string
+  directory: string
+  protected: boolean
+  sessionID?: string
+}
+
+export interface ListToolSuccessData {
+  repoRoot: string
+  baseBranch: string
+  entries: ListToolEntry[]
+}

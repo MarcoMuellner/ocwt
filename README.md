@@ -45,7 +45,7 @@ pnpm format:check
 
 ## Current status
 
-The project now includes deterministic branch, path, git, and session orchestration helpers plus real `ocwt_open` and `ocwt_close` flows for safe worktree lifecycle operations. The implementation plan is documented in:
+The project now includes deterministic branch, path, git, and session orchestration helpers plus real `ocwt_open`, `ocwt_close`, and `ocwt_list` flows for the core worktree lifecycle, including managed-parent filtering for listings. The implementation plan is documented in:
 
 - `OPENCODE_NATIVE_OCWT_DESIGN.md`
 - `OPENCODE_NATIVE_OCWT_IMPLEMENTATION_PLAN.md`
