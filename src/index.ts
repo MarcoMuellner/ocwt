@@ -1,4 +1,5 @@
 export * from "./lib/types.js"
 export * from "./lib/json.js"
 export * from "./lib/errors.js"
+export * from "./lib/git.js"
 export * from "./lib/paths.js"

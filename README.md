@@ -45,7 +45,7 @@ pnpm format:check
 
 ## Current status
 
-The project now includes the first shared domain helpers for deterministic branch and path handling. The implementation plan is documented in:
+The project now includes the first shared domain helpers for deterministic branch, path, and git lifecycle handling. The implementation plan is documented in:
 
 - `OPENCODE_NATIVE_OCWT_DESIGN.md`
 - `OPENCODE_NATIVE_OCWT_IMPLEMENTATION_PLAN.md`
