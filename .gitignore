@@ -5,3 +5,4 @@ dist/
 *.tsbuildinfo
 .pytest_cache/
 .ruff_cache/
+/.idea/workspace.xml
