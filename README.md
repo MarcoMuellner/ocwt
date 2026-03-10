@@ -1,12 +1,12 @@
-# ocwt-native
+# opencode-ocwt
 
-Native OpenCode implementation workspace for `ocwt`.
+Standalone npm plugin for native `ocwt` workflows in OpenCode.
 
-This repository is the source workspace for building the OpenCode-native version of `ocwt`, based on `OPENCODE_NATIVE_OCWT_DESIGN.md` and `OPENCODE_NATIVE_OCWT_IMPLEMENTATION_PLAN.md`.
+This repository builds `opencode-ocwt`, an installable OpenCode plugin package that is loaded through `opencode.json` without requiring a local `.opencode/` runtime directory.
 
 ## Goals
 
-- implement `ocwt` natively with OpenCode tools and commands
+- implement `ocwt` natively as an installable OpenCode npm plugin
 - keep worktree lifecycle safe and deterministic
 - preserve current branch, symlink, and session behavior
 - keep the codebase small, typed, and testable
@@ -24,14 +24,27 @@ This repository is the source workspace for building the OpenCode-native version
 
 ```text
 src/
-  commands/   Prompt and command scaffolding
   config/     Config loading and precedence helpers
   lib/        Shared domain logic and types
+  plugin*.ts  Plugin entrypoint and injected command definitions
   tools/      Native ocwt tool entrypoints
 tests/        Unit and integration tests
 ```
 
-The code lives under `src/`. The eventual `.opencode/` runtime surface can be generated or assembled from these source files once implementation starts.
+The code lives under `src/`. The published package entrypoint is `src/plugin.ts`, which injects commands and registers tools through the OpenCode plugin API.
+
+## Install
+
+Add the plugin to your OpenCode config:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["opencode-ocwt"]
+}
+```
+
+OpenCode installs npm plugins automatically with Bun at startup.
 
 ## Scripts
 
@@ -45,7 +58,7 @@ pnpm format:check
 
 ## Current status
 
-The project now includes deterministic branch, path, git, session, config, and symlink helpers plus real `ocwt_open`, `ocwt_close`, and `ocwt_list` flows for the core worktree lifecycle. The implementation plan is documented in:
+The project now includes deterministic branch, path, git, session, config, and symlink helpers plus real `ocwt_open`, `ocwt_close`, and `ocwt_list` flows for the core worktree lifecycle. Commands are now injected from the plugin at runtime, and the package is structured for standalone npm distribution through OpenCode's `plugin` config. The implementation plan is documented in:
 
 - `OPENCODE_NATIVE_OCWT_DESIGN.md`
 - `OPENCODE_NATIVE_OCWT_IMPLEMENTATION_PLAN.md`
@@ -60,3 +73,4 @@ The project now includes deterministic branch, path, git, session, config, and s
 - harden edge cases before moving orchestration into tool entrypoints
 - keep config precedence explicit: tool input overrides config, config overrides defaults
 - back up conflicting files before replacing them with shared-state symlinks
+- keep the shipping surface plugin-first: npm package plus `plugin` config only

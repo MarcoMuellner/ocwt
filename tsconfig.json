@@ -12,6 +12,7 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "useUnknownInCatchVariables": true,
+    "skipLibCheck": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
