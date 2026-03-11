@@ -1,12 +1,15 @@
-import type { Plugin } from "@opencode-ai/plugin"
+import type { Plugin, PluginInput } from "@opencode-ai/plugin"
 import { tool, type ToolContext } from "@opencode-ai/plugin/tool"
 
 import { INJECTED_COMMANDS } from "./plugin-commands.js"
+import { createPluginSessionClient } from "./plugin-runtime.js"
 import { ocwtClose } from "./tools/ocwt-close.js"
 import { ocwtList } from "./tools/ocwt-list.js"
 import { ocwtOpen } from "./tools/ocwt-open.js"
 
-export const plugin: Plugin = async () => {
+export const plugin: Plugin = async (input: PluginInput) => {
+  const sessionClient = createPluginSessionClient(input)
+
   return {
     config: async (input) => {
       input.command ??= {}
@@ -41,6 +44,8 @@ export const plugin: Plugin = async () => {
         ) {
           return await ocwtOpen(args, {
             cwd: context.directory,
+            sessionClient,
+            interactive: true,
           })
         },
       }),
@@ -75,6 +80,7 @@ export const plugin: Plugin = async () => {
         ) {
           return await ocwtList(args, {
             cwd: context.directory,
+            sessionClient,
           })
         },
       }),

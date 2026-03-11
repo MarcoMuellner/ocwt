@@ -14,6 +14,12 @@ export interface SessionClient {
     title?: string
   }): Promise<SessionSummary>
   selectSession?(input: { sessionID: string }): Promise<void>
+  promptSession?(input: {
+    sessionID: string
+    directory: string
+    text: string
+    agent?: string
+  }): Promise<void>
 }
 
 export interface EnsureSessionOptions {

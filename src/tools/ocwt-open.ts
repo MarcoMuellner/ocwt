@@ -80,6 +80,7 @@ export async function ocwtOpen(
       await loadOcwtConfig(options),
       buildToolConfigOverrides(options.worktreeParent),
     )
+    const shouldPlan = parsedInput.plan ?? config.autoPlan
     const baseBranch = await getBaseBranch(repoRoot)
     const branch = await resolveTargetBranch(parsedInput, repoRoot)
 
@@ -108,6 +109,19 @@ export async function ocwtOpen(
         : undefined
 
       if (typeof sessionResult === "string") return sessionResult
+
+      if (
+        shouldPlan &&
+        sessionResult?.sessionID &&
+        options.sessionClient?.promptSession
+      ) {
+        await options.sessionClient.promptSession({
+          sessionID: sessionResult.sessionID,
+          directory: baseData.worktreeDir,
+          text: await buildPlanningPrompt(parsedInput, options.cwd),
+          ...buildPlanningAgent(parsedInput.agent ?? config.agent),
+        })
+      }
 
       return stringifyEnvelope(
         ok<OpenToolSuccessData>(
@@ -163,6 +177,19 @@ export async function ocwtOpen(
 
     if (typeof sessionResult === "string") return sessionResult
 
+    if (
+      shouldPlan &&
+      sessionResult?.sessionID &&
+      options.sessionClient?.promptSession
+    ) {
+      await options.sessionClient.promptSession({
+        sessionID: sessionResult.sessionID,
+        directory: baseData.worktreeDir,
+        text: await buildPlanningPrompt(parsedInput, options.cwd),
+        ...buildPlanningAgent(parsedInput.agent ?? config.agent),
+      })
+    }
+
     return stringifyEnvelope(
       ok<OpenToolSuccessData>(
         "OK",
@@ -209,6 +236,43 @@ async function validateAttachedFiles(
       )
     }
   }
+}
+
+async function buildPlanningPrompt(
+  input: ParsedOpenToolInput,
+  cwd: string,
+): Promise<string> {
+  const fileTargets = [
+    ...(input.intentOrBranch ? [input.intentOrBranch] : []),
+    ...(input.files ?? []),
+  ]
+
+  const existingFiles: string[] = []
+
+  for (const target of fileTargets) {
+    const resolvedPath = path.resolve(cwd, target)
+    const exists = await fs
+      .access(resolvedPath)
+      .then(() => true)
+      .catch(() => false)
+
+    if (exists) existingFiles.push(target)
+  }
+
+  if (existingFiles.length > 0) {
+    const fileList = existingFiles.map((file) => `@${file}`).join(", ")
+    return `Create an implementation plan for ${fileList}. Start by reading the referenced file${existingFiles.length === 1 ? "" : "s"}, inspect the codebase in this worktree, and produce a concrete plan before making changes.`
+  }
+
+  if (input.intentOrBranch) {
+    return `Create an implementation plan for this worktree based on: ${input.intentOrBranch}. Inspect the codebase first and produce a concrete plan before making changes.`
+  }
+
+  if (input.files && input.files.length > 0) {
+    return `Create an implementation plan for this worktree based on these files: ${input.files.join(", ")}. Inspect the codebase first and produce a concrete plan before making changes.`
+  }
+
+  return "Create an implementation plan for this worktree. Inspect the codebase first and produce a concrete plan before making changes."
 }
 
 async function resolveTargetBranch(
@@ -289,6 +353,10 @@ function mergeSessionMetadata(
 
 function buildToolConfigOverrides(worktreeParent?: string) {
   return worktreeParent === undefined ? {} : { worktreeParent }
+}
+
+function buildPlanningAgent(agent?: string) {
+  return agent === undefined ? {} : { agent }
 }
 
 function handleOpenError(error: unknown) {

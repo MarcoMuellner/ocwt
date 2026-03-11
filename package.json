@@ -1,6 +1,6 @@
 {
   "name": "opencode-ocwt",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "OpenCode plugin for native ocwt worktree workflows",
   "license": "MIT",
   "type": "module",
@@ -55,6 +55,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@opencode-ai/sdk": "^1.2.24",
     "zod": "^3.24.2"
   },
   "peerDependencies": {

@@ -188,6 +188,58 @@ describe("ocwtOpen", () => {
     expect(selected).toEqual(["session-1"])
   })
 
+  it("starts planning in the target session when plan is enabled", async () => {
+    const repo = await createRepo()
+    const worktreeParent = await fs.mkdtemp(
+      path.join(os.tmpdir(), "ocwt-parent-"),
+    )
+    tempDirectories.push(worktreeParent)
+
+    const prompted: Array<{
+      sessionID: string
+      directory: string
+      text: string
+      agent?: string
+    }> = []
+    const client: SessionClient = {
+      async listSessions() {
+        return []
+      },
+      async createSession(input) {
+        return {
+          id: "session-1",
+          directory: input.directory,
+          ...(input.title === undefined ? {} : { title: input.title }),
+        }
+      },
+      async selectSession() {},
+      async promptSession(input) {
+        prompted.push(input)
+      },
+    }
+
+    const result = parseEnvelope(
+      await ocwtOpen(
+        { intentOrBranch: "feat/native-plan", plan: true, agent: "plan" },
+        {
+          cwd: repo,
+          worktreeParent,
+          sessionClient: client,
+          interactive: true,
+        },
+      ),
+    )
+
+    expect(result.ok).toBe(true)
+    expect(prompted).toHaveLength(1)
+    expect(prompted[0]).toMatchObject({
+      sessionID: "session-1",
+      agent: "plan",
+      directory: path.join(worktreeParent, "feat__native-plan"),
+    })
+    expect(prompted[0]?.text).toContain("Create an implementation plan")
+  })
+
   it("returns failure metadata when session creation fails after the worktree is created", async () => {
     const repo = await createRepo()
     const worktreeParent = await fs.mkdtemp(

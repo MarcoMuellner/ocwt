@@ -105,3 +105,12 @@ The project now includes deterministic branch, path, git, session, config, and s
 - keep config precedence explicit: tool input overrides config, config overrides defaults
 - back up conflicting files before replacing them with shared-state symlinks
 - keep the shipping surface plugin-first: npm package plus `plugin` config only
+
+## Runtime behavior
+
+With the plugin loaded in OpenCode:
+
+- `/wt-open` creates or reuses the worktree and switches the TUI to the target session
+- `/wt-build` does the same and starts a planning prompt in the target session
+- `/wt-open` also starts planning when `auto_plan` is enabled in `~/.config/ocwt/config.json`
+- session creation and selection now use the live OpenCode SDK rather than placeholder plugin wrappers
