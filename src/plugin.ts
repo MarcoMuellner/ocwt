@@ -2,7 +2,10 @@ import type { Plugin, PluginInput } from "@opencode-ai/plugin"
 import { tool, type ToolContext } from "@opencode-ai/plugin/tool"
 
 import { INJECTED_COMMANDS } from "./plugin-commands.js"
-import { createPluginSessionClient } from "./plugin-runtime.js"
+import {
+  createPluginSessionClient,
+  selectPluginSession,
+} from "./plugin-runtime.js"
 import { ocwtClose } from "./tools/ocwt-close.js"
 import { ocwtList } from "./tools/ocwt-list.js"
 import { ocwtOpen } from "./tools/ocwt-open.js"
@@ -42,11 +45,14 @@ export const plugin: Plugin = async (input: PluginInput) => {
           },
           context: ToolContext,
         ) {
-          return await ocwtOpen(args, {
+          const result = await ocwtOpen(args, {
             cwd: context.directory,
             sessionClient,
-            interactive: true,
+            interactive: false,
           })
+
+          captureOpenToolMetadata(result, context)
+          return result
         },
       }),
       ocwt_close: tool({
@@ -85,7 +91,53 @@ export const plugin: Plugin = async (input: PluginInput) => {
         },
       }),
     },
+    "tool.execute.after": async (event, output) => {
+      if (event.tool !== "ocwt_open") return
+
+      const sessionID = readTargetSessionID(output.metadata)
+      if (!sessionID) return
+
+      await selectPluginSession(input, sessionID)
+    },
   }
 }
 
 export default plugin
+
+function captureOpenToolMetadata(result: string, context: ToolContext) {
+  const targetSessionID = extractTargetSessionID(result)
+  if (!targetSessionID) return
+
+  context.metadata({
+    metadata: {
+      ocwt: {
+        targetSessionID,
+      },
+    },
+  })
+}
+
+function extractTargetSessionID(result: string): string | undefined {
+  try {
+    const parsed = JSON.parse(result) as {
+      ok?: boolean
+      data?: {
+        sessionID?: string
+      }
+    }
+
+    if (parsed.ok !== true) return undefined
+    return parsed.data?.sessionID
+  } catch {
+    return undefined
+  }
+}
+
+function readTargetSessionID(metadata: unknown): string | undefined {
+  if (typeof metadata !== "object" || metadata === null) return undefined
+  const ocwt = Reflect.get(metadata, "ocwt")
+  if (typeof ocwt !== "object" || ocwt === null) return undefined
+
+  const targetSessionID = Reflect.get(ocwt, "targetSessionID")
+  return typeof targetSessionID === "string" ? targetSessionID : undefined
+}

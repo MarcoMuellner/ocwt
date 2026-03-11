@@ -5,7 +5,9 @@ import type { SessionClient, SessionSummary } from "./lib/session.js"
 
 /**
  * Creates a session client backed by the live OpenCode server so plugin tools can
- * create sessions, switch the TUI, and submit planning prompts in target worktrees.
+ * create sessions, discover sessions by worktree directory, and submit prompts.
+ * TUI switching is handled after tool execution so the UI lands in the new session
+ * only after the tool call completes.
  *
  * @param input - The current plugin runtime context provided by OpenCode.
  * @returns A session client adapter for ocwt tool orchestration.
@@ -24,6 +26,7 @@ export function createPluginSessionClient(input: PluginInput): SessionClient {
       if (response.data === undefined) {
         throw new Error("Session list returned no data")
       }
+
       return response.data.map(toSessionSummary)
     },
     async createSession({ directory, title }) {
@@ -38,17 +41,8 @@ export function createPluginSessionClient(input: PluginInput): SessionClient {
       if (response.data === undefined) {
         throw new Error("Session creation returned no data")
       }
-      return toSessionSummary(response.data)
-    },
-    async selectSession({ sessionID }) {
-      const response = await createRootClient(input).tui.selectSession({
-        sessionID,
-      })
 
-      if (response.error) throw new Error(extractErrorMessage(response.error))
-      if (response.data === undefined) {
-        throw new Error("Session prompt returned no data")
-      }
+      return toSessionSummary(response.data)
     },
     async promptSession({ sessionID, directory, text, agent }) {
       const response = await createDirectoryClient(
@@ -66,8 +60,28 @@ export function createPluginSessionClient(input: PluginInput): SessionClient {
       })
 
       if (response.error) throw new Error(extractErrorMessage(response.error))
+      if (response.data === undefined) {
+        throw new Error("Session prompt returned no data")
+      }
     },
   }
+}
+
+/**
+ * Selects a TUI session after the current tool execution finishes.
+ *
+ * @param input - The current plugin runtime context provided by OpenCode.
+ * @param sessionID - The session that should become active in the TUI.
+ */
+export async function selectPluginSession(
+  input: PluginInput,
+  sessionID: string,
+): Promise<void> {
+  const response = await createRootClient(input).tui.selectSession({
+    sessionID,
+  })
+
+  if (response.error) throw new Error(extractErrorMessage(response.error))
 }
 
 function createRootClient(input: PluginInput) {

@@ -113,4 +113,4 @@ With the plugin loaded in OpenCode:
 - `/wt-open` creates or reuses the worktree and switches the TUI to the target session
 - `/wt-build` does the same and starts a planning prompt in the target session
 - `/wt-open` also starts planning when `auto_plan` is enabled in `~/.config/ocwt/config.json`
-- session creation and selection now use the live OpenCode SDK rather than placeholder plugin wrappers
+- session creation and planning use the live OpenCode SDK, and TUI switching is applied after tool completion so the next interaction lands in the target session
