@@ -12,6 +12,7 @@ import { ocwtOpen } from "./tools/ocwt-open.js"
 
 export const plugin: Plugin = async (input: PluginInput) => {
   const sessionClient = createPluginSessionClient(input)
+  const pendingSessionSwitches = new Map<string, string>()
 
   return {
     config: async (input) => {
@@ -51,7 +52,7 @@ export const plugin: Plugin = async (input: PluginInput) => {
             interactive: false,
           })
 
-          captureOpenToolMetadata(result, context)
+          captureOpenToolMetadata(result, context, pendingSessionSwitches)
           return result
         },
       }),
@@ -91,12 +92,13 @@ export const plugin: Plugin = async (input: PluginInput) => {
         },
       }),
     },
-    "tool.execute.after": async (event, output) => {
-      if (event.tool !== "ocwt_open") return
+    event: async ({ event }) => {
+      if (event.type !== "command.executed") return
 
-      const sessionID = readTargetSessionID(output.metadata)
+      const sessionID = pendingSessionSwitches.get(event.properties.sessionID)
       if (!sessionID) return
 
+      pendingSessionSwitches.delete(event.properties.sessionID)
       await selectPluginSession(input, sessionID)
     },
   }
@@ -104,17 +106,15 @@ export const plugin: Plugin = async (input: PluginInput) => {
 
 export default plugin
 
-function captureOpenToolMetadata(result: string, context: ToolContext) {
+function captureOpenToolMetadata(
+  result: string,
+  context: ToolContext,
+  pendingSessionSwitches: Map<string, string>,
+) {
   const targetSessionID = extractTargetSessionID(result)
   if (!targetSessionID) return
 
-  context.metadata({
-    metadata: {
-      ocwt: {
-        targetSessionID,
-      },
-    },
-  })
+  pendingSessionSwitches.set(context.sessionID, targetSessionID)
 }
 
 function extractTargetSessionID(result: string): string | undefined {
@@ -131,13 +131,4 @@ function extractTargetSessionID(result: string): string | undefined {
   } catch {
     return undefined
   }
-}
-
-function readTargetSessionID(metadata: unknown): string | undefined {
-  if (typeof metadata !== "object" || metadata === null) return undefined
-  const ocwt = Reflect.get(metadata, "ocwt")
-  if (typeof ocwt !== "object" || ocwt === null) return undefined
-
-  const targetSessionID = Reflect.get(ocwt, "targetSessionID")
-  return typeof targetSessionID === "string" ? targetSessionID : undefined
 }

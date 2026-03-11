@@ -1,6 +1,6 @@
 {
   "name": "opencode-ocwt",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "OpenCode plugin for native ocwt worktree workflows",
   "license": "MIT",
   "type": "module",
